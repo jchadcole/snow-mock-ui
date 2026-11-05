@@ -1,6 +1,6 @@
 # SNOW Mock UI: User Guide
 
-This guide covers hosting the mock ServiceNow taxpayer workspace, running a demo, popping it from Genesys Cloud, and making it your own: new taxpayers, your own cell phone, agents, branding and data.
+This guide is for **version 3.0.0**. It covers hosting the mock ServiceNow taxpayer workspace, running a demo, popping it from Genesys Cloud, and making it your own: new taxpayers, your own cell phone, agents, branding and data.
 
 All data in the app is fictional. The app is not affiliated with ServiceNow, Genesys or any state agency.
 
@@ -22,7 +22,7 @@ All data in the app is fictional. The app is not affiliated with ServiceNow, Gen
 
 ## 1. What it is
 
-A small Node.js web server plus a single-page app that looks like a ServiceNow CSM Configurable Workspace set up for a state department of taxation. Agents sign in as a persona, take screen-popped calls from Genesys Cloud, and work the caller's record: verify identity, release refunds, take payments, set up payment plans, re-send notices, create cases and wrap up.
+A small Node.js web server plus a single-page app that looks like a ServiceNow CSM/FSM Configurable Workspace set up for a state department of taxation. Agents sign in as a persona and take screen-popped calls from Genesys Cloud. An accepted call opens an **interaction record**, with the call card, Customer History, Agent Assist and a Wrap up dock. From there the agent works the caller's record: verify identity, release refunds, take payments, set up payment plans, re-send notices, create cases and wrap up.
 
 Key points:
 
@@ -38,6 +38,8 @@ Where things are in the repo:
 | `lib/seed.js` | All demo data: agents, taxpayers, returns, notices, cases, knowledge articles |
 | `lib/brands.js` | Agency branding: names, forms, area codes, cities, logo, colors |
 | `lib/scenarios.js` | Scripted Pilot virtual agent sessions (intents, collected details, transcripts) |
+| `lib/assist.js` | Agent Assist scripts for the interaction screen: the live call lines and the knowledge article suggested for each |
+| `CHANGELOG.md` | Release notes for each version |
 | `public/` | The workspace app (`index.html`, `js/app.js`, `js/ai.js`, `css/app.css`) |
 | `public/api-docs.html` | API reference, served at `/api-docs.html` |
 | `genesys/` | Genesys Cloud data action definitions to import |
@@ -121,22 +123,31 @@ If a screen pop URL arrives and nobody is signed in, the app signs in the `agent
 
 ### Layout
 
-- **Left rail**: Home, lists, knowledge, the **Genesys** page (phone icon), and the inbox.
-- **Top bar**: global search, the active-call chip with its timer, presence, and your avatar (opens **Settings**).
+- **Top bar**: All, Favorites, History, Workspaces, the workspace name, Search (with a scope menu ▾), chat, help, the **phone** icon (opens the Genesys page; shows a badge and a dot when connected), the **bell** (recent pops), and your avatar (opens **Settings**).
+- **Left rail**: Home, Lists, Inbox, and History (the interactions list).
+- **Inbox**: your status (On Queue by default, with a gear) and ringing calls. Each card shows Phone, the IMS number and **Time to accept 0:55**, with **Reject** and **Accept**.
 - **Home**: open cases, today's schedule and adherence, queue stats, recent interactions, plus Insights, Scorecard and Schedule tabs.
-- **Taxpayer record**: tabs for Overview, Returns, Refunds, Balances & payments, Notices, Cases, Identity, Activity and Profile.
-- **Interaction column** (right side, during a call): caller card, timer, hold and mute, identity badge, Genesys details (queue, intent, conversation ID), outcomes, live transcript, and **Log call & wrap up**.
-- **Recommendations**: next best actions based on the record (held refund, balance due, response due, delinquent return, POA, interpreter, offset), with a matching knowledge article.
-- **Now Assist**: a rule-based assistant that answers from the record and the knowledge base. It does not call a real AI service.
+- **Interaction record** (what an accepted call opens): see [5.1](#51-the-interaction-screen).
+- **Taxpayer record**: tabs for Overview, Returns, Refunds, Balances & payments, Notices, Cases, Identity, Activity and Profile, with **Recommendations** (next best actions and a matching knowledge article) and **Now Assist** (a rule-based assistant that answers from the record and the knowledge base; it doesn't call a real AI service).
+- **Version**: the running version shows on the sign-in page, in the footer, and in Settings.
+
+#### Two screens for a call
+
+By default, an accepted **voice** call opens the **interaction record** (version 3). The earlier layout (version 2) opens the **taxpayer record** instead, with an interaction column on the right: caller card, identity badge, Genesys details, outcomes, live transcript, and **Log call & wrap up**. Chats and messages always use the taxpayer record.
+
+To use the taxpayer record for calls, choose **Settings > Screen pops open > The taxpayer record**, or add `view=taxpayer` to a pop URL.
 
 ### Settings (click your avatar)
 
 | Setting | What it does |
 |---|---|
 | Genesys Cloud agent email | Push screen pops addressed to this email open in this browser. Defaults to the persona's email. Set it to your real Genesys agent email when pops come from Genesys. |
-| Ring pushed calls in the inbox | On: a push pop rings in the inbox with Accept / Decline and a 30 second countdown. Off: it opens straight away. |
+| Ring pushed calls in the inbox | On: a push pop rings in the inbox with Accept / Reject and a countdown (55 seconds by default). Off: it opens straight away. |
 | Open the record automatically | With ringing off, opens the record as soon as the pop arrives. Otherwise shows a toast with Open / Dismiss. |
+| Screen pops open | **The interaction record** (default) or **The taxpayer record** (the version 2 layout). |
+| Color scheme | Brand default, the workspace template colors, or the brand's own colors. The default for each brand is its `ui.palette` setting. |
 | Brand | Switch agency. Switching reseeds all data with that agency's names, forms and area codes. |
+| Version and Release notes | The running version and build, and the release notes from `CHANGELOG.md`. |
 | Reset demo data | Restores every record to its starting state and closes open tabs. |
 | Switch user | Back to the sign-in page. |
 
@@ -153,10 +164,69 @@ Settings are stored in the browser (localStorage), so each browser keeps its own
 3. **Settings > Reset demo data**.
 4. If Genesys will push the pop, check that the agent email in Settings matches the Genesys agent who will answer, and that the Genesys page shows **Listening for screen pops**.
 5. Use a browser window sized for the recording, and close tabs you don't want on screen.
+6. Practice with `]`: it brings in the next Agent Assist line immediately, so you can pace the demo to your narration.
+
+### 5.1 The interaction screen
+
+When a call is accepted, the workspace opens an interaction record (an IMS number), laid out like a CSM/FSM Configurable Workspace:
+
+- **Left**: the call card and Customer History.
+- **Middle**: the Interaction form (Account, Contact, Verified, State, short description).
+- **Right**: Agent Assist and the utility rail (Learning, Attachments, Record details, Agent Assist, Script, Images).
+- **Header**: Genesys Schedule Callback, Create Incident, Close, Create Case, and the more menu (⋯).
+
+![Inbox ringing](img/v3-02-inbox-ring.png)
+
+**What happens on a call:**
+
+1. **Accept.** The inbox closes. A new tab shows "Loading…", then "Record", then the caller's name.
+2. **The record loads.** The title is **Agent Needed** for a Pilot transfer, otherwise the intent. State is Work in Progress, and Agent Assist shows **Related Search Results**.
+3. **The call connects.** The yellow **Out of Adherence** toast slides in (close it with ✕). The call card shows **Active call** with a timer, the caller's city and number, and the controls. Customer History reloads.
+4. **Agent Assist loads.** The **Search knowledge** box appears. For a Pilot transfer, it shows the bot's **Transfer Summary** (Reason contacted, Summary, Resolution). Hover the summary to see the AI accuracy note.
+5. **Suggestions arrive.** Every 7 seconds a **New Suggestion** pill brings the next caller or agent line with its knowledge card. The key sentence is highlighted, and older cards fade. Press **]** to bring in the next line right away.
+6. **Hang up** (red button) or **Close.** The tab reads **Call is in wrap-up**, Agent Assist asks for feedback on each article (Provide Feedback / Dismiss), and the **Wrap up** dock opens.
+7. **Submit & close.** Pick a **Wrap up code** to enable the button. Notes are prefilled from what you did on the call. The card shows "The call has ended", State becomes **Closed Complete**, the **Internal Transcript** fills in, and Customer History gets a new entry at the top.
+
+![Agent Assist suggestions](img/v3-07-suggestions.png)
+
+![Wrap up dock](img/v3-12-wrapup.png)
+
+![Closed interaction](img/v3-16-final.png)
+
+**Every click on the screen:**
+
+| Where | Click | Result |
+|---|---|---|
+| Call card | REC ▾ | Pause or resume recording (red dot) |
+| Call card | Mute | Gray slashed microphone, "Unmute yourself" tooltip |
+| Call card | Hold | The card shows "On hold" |
+| Call card | Keypad | A dial pad that records the digits |
+| Call card | Transfer → | Pick a queue or agent. A blind transfer ends the call and opens wrap up. |
+| Call card | Flag | Flags the interaction for a supervisor |
+| Customer History | Search, filter, calendar | Search the list, filter by calls, cases, virtual agent or notices, or show the last 30 days |
+| Customer History | An entry | Opens that interaction, case, Pilot transcript or notice |
+| Form | ⓘ on Account or Contact | Taxpayer preview with **Open record** |
+| Form | Verified | Opens identity verification when the caller isn't verified yet |
+| Form | Collapse chevron | Collapses the Interaction section |
+| Header | Genesys Schedule Callback | Number, date and time, and queue. Logs the callback. |
+| Header | Create Incident / Create Case | Creates an INC or CS record. The case is linked to the interaction. |
+| Header | ⋯ | Open taxpayer record, Verify identity, Apply suspense payment, Refund details, Email the taxpayer, View the Pilot transcript, Copy the IMS number |
+| Header (after closing) | Save | Saves the short description |
+| Agent Assist | 👍 / 👎 | Relevant / Irrelevant (click again to clear) |
+| Agent Assist | Article title | Opens the article with **Send to taxpayer** |
+| Agent Assist | Search knowledge | Searches the articles. **Clear** goes back to suggestions. |
+| Right rail | Learning, Attachments, Record details, Agent Assist, Script, Images | Switches the right panel. Script shows Pilot's handoff and transcript. |
+| Wrap up | ⤢ | Enlarges the dock |
+
+The text on this screen (title, countdown, toast, presence states, wrap up codes, Agent Assist speed, Transfer Summary wording) is configurable. See [8.5](#85-change-the-interaction-screen-text) and [8.6](#86-change-the-agent-assist-scripts).
 
 ### The main story: Charlotte Gong, (614) 555-0184
 
 Charlotte's $1,284 refund is on hold for identity verification, and the Identity Confirmation Quiz letter went to her old address and came back undeliverable. She spoke to Richie by chat four days ago.
+
+**On the interaction screen** (the default): pop her number (`/pop?phone=6145550184`, or push it from the Genesys page) and **Accept**. Agent Assist suggests the refund timeline and identity articles as she talks. Use **⋯ > Verify identity**, then **⋯ > Refund details** to open her Refunds tab, where you release the refund and switch it to direct deposit. Use **⋯ > Email the taxpayer**, then hang up, pick a wrap up code, and **Submit & close**.
+
+**On the taxpayer screen** (`view=taxpayer`, or Settings > Screen pops open), her story has a scripted live transcript that waits for each action:
 
 1. **The call pops.** From Genesys, or from the Genesys page in the app (pick Charlotte, intent "Refund status", then **Push screen pop** or **Open pop URL**). Her record opens with the call card and the **Transcript** tab.
 2. **Verify identity.** Open **Verify identity** (from the identity badge, the Identity tab or the recommendations). The dialog lists four knowledge-based questions with the expected answers shown for the presenter: date of birth (April 12, 1989), SSN last 4 (4471), prior-year AGI, and the address on the return. Mark each **Matched** (or use **Mark all matched**) and click **Verify**. Marking any answer **No match** fails the check.
@@ -165,7 +235,7 @@ Charlotte's $1,284 refund is on hold for identity verification, and the Identity
 5. **Email a confirmation.** Compose email drafts a message to `c.gong@gmail.com`; send it.
 6. **Wrap up.** **Log call & wrap up** shows an AI-style summary. Pick a wrap-up code, keep case CS0001042 linked with **Resolve the linked case** ticked, and click **Save and end interaction**. The interaction appears in Activity.
 
-The transcript is scripted. Each agent line waits for the matching action (verify, release, direct deposit, email), so the conversation keeps pace with what you do on screen.
+On this screen the transcript is scripted. Each agent line waits for the matching action (verify, release, direct deposit, email), so the conversation keeps pace with what you do on screen.
 
 ### Other callers
 
@@ -178,12 +248,12 @@ The transcript is scripted. Each agent line waits for the matching action (verif
 | (513) 555-0155 | Elena Ruiz, CPA, for Thomas Reed | Authorized representative with a power of attorney, asking about an amended return. |
 | (216) 555-0161 | Anika Choudhury | Estimated payment still posting. |
 | (330) 555-0177 | Maria Delgado | Spanish speaker; refund partly offset to child support. |
-| (419) 555-0124 | Tom Harper | The two Pilot virtual agent scenarios. See [5.1](#51-pilot-virtual-agent-scenarios-tom-harper). |
+| (419) 555-0124 | Tom Harper | The two Pilot virtual agent scenarios. See [5.2](#52-pilot-virtual-agent-scenarios-tom-harper). |
 | any other | none | No match, so the agent creates a new contact. |
 
-Charlotte and Tom have scripted transcripts. Other calls show the interaction details instead.
+On the interaction screen, every caller gets Agent Assist lines from `lib/assist.js`: Charlotte, Marcus, Linda and Tom's transfer have their own, and other callers get a short default. On the taxpayer screen, only Charlotte and Tom have scripted transcripts.
 
-### 5.1 Pilot virtual agent scenarios (Tom Harper)
+### 5.2 Pilot virtual agent scenarios (Tom Harper)
 
 The virtual agent, "Pilot", runs in Genesys Cloud. This app shows only the ServiceNow side: what Pilot logged, and what the agent sees after a transfer.
 
@@ -208,15 +278,25 @@ Pilot authenticates Tom with his SSN and date of birth and tells him the refund 
 
 Tom calls about notice 1234 and says he already paid by check. Pilot collects the details, shares the Respond to a Letter or Notice link, and transfers him to an agent.
 
-1. Genesys posts the session with outcome `Transferred`, then screen pops with the **same** `conversationId`. The pop rings in the inbox as usual.
-2. The **Transcript** tab shows Pilot's conversation first, then a "Transferred to (agent)" divider, then the live call, which advances as the agent acts.
-3. The **Interaction** tab shows the **Pilot handoff card**: intent and confidence; the details Pilot collected (notice 1234, tax year 2024, $2,200, paid by check mailed July 1, canceled check image unknown); the link Pilot shared; and the transfer reason.
+Genesys posts the session with outcome `Transferred`, then screen pops with the **same** `conversationId`. The pop rings in the inbox as usual.
+
+**On the interaction screen** (the default), after **Accept**:
+
+1. The record is titled **Agent Needed**, and Agent Assist opens with Pilot's **Transfer Summary**. The **Script** button on the right rail shows Pilot's handoff details and transcript.
+2. Agent Assist suggests KB0020426, KB0020427 and KB0020428 as Tom asks about his check.
+3. Use **⋯ > Verify identity** (Pilot didn't authenticate Tom on this call), then **⋯ > Apply suspense payment**. The balance drops to $0 and the notice becomes "Resolved - payment applied".
+4. Hang up, pick a wrap up code (for example Notice Response), and **Submit & close**.
+
+**On the taxpayer screen** (`view=taxpayer`):
+
+1. The **Transcript** tab shows Pilot's conversation first, then a "Transferred to (agent)" divider, then the live call, which advances as the agent acts.
+2. The **Interaction** tab shows the **Pilot handoff card**: intent and confidence; the details Pilot collected (notice 1234, tax year 2024, $2,200, paid by check mailed July 1, canceled check image unknown); the link Pilot shared; and the transfer reason.
 
 ![Transferred call popping in the workspace](img/pilot-transfer-pop.png)
 
 ![Pilot handoff card](img/pilot-handoff-card.png)
 
-The agent then:
+Then, on this screen, the agent:
 
 1. **Verifies identity.** Pilot didn't authenticate Tom on this call.
 2. **Applies the payment**, from the **Payment found** recommendation or from **Balances & payments > Unapplied payments**. The balance drops to $0 and the notice becomes "Resolved - payment applied".
@@ -256,8 +336,9 @@ https://YOUR-HOST/pop?phone=6145550184&conversationId=abc-123&queue=Individual%2
 | `conversationId` (or `gcConversationId`, `interactionId`) | Genesys conversation ID. Shown on the call card and saved with the wrap-up. If no phone is given and the server has Genesys credentials, the caller's number is looked up from Genesys. |
 | `queue`, `intent`, `direction`, `mediaType` | Shown on the call card. `mediaType` is `voice`, `chat` or `message`. |
 | `customerName` | Shown when there is no match. |
-| `scenario` | Run a scripted Pilot session first, then pop: `notice-paid` (transfer) or `refund-status` (contained). See [5.1](#51-pilot-virtual-agent-scenarios-tom-harper). |
+| `scenario` | Run a scripted Pilot session first, then pop: `notice-paid` (transfer) or `refund-status` (contained). See [5.2](#52-pilot-virtual-agent-scenarios-tom-harper). |
 | `tab` | Open on a specific tab: `overview`, `returns`, `refunds`, `balances`, `notices`, `cases`, `identity`, `activity`, `profile`. |
+| `view` | `taxpayer` opens the version 2 taxpayer screen for this pop instead of the interaction record. Overrides Settings for that pop. |
 | `embed=1` | Compact layout for an iframe. Turned on automatically when the app is framed; `embed=0` turns it off. |
 | `agent` | Sets this browser's agent email for push pops (same as Settings). |
 | `persona` | `agent`, `business` or `supervisor`: who to sign in if nobody is. |
@@ -545,7 +626,7 @@ To add an agency, copy the `pinecrest` block, give it a new key and `id`, and ch
 | Field | Where it shows |
 |---|---|
 | `id` | Used by `BRAND`, `?brand=` and Settings. Must match the object's key. |
-| `agency`, `shortName`, `workspaceName` | Sign-in page, header, browser tab title, emails. |
+| `agency`, `shortName`, `workspaceName` | Sign-in page, header, browser tab title, emails. `workspaceName` defaults to "CSM/FSM Configurable Workspace". |
 | `state`, `stateAbbr` | Addresses and wording such as "prior-year Ohio AGI". |
 | `emailDomain` | Agent email addresses. |
 | `supportLine`, `portal`, `refundTool` | Knowledge articles, notices and the Now Assist answers. |
@@ -554,10 +635,11 @@ To add an agency, copy the `pinecrest` block, give it a new key and `id`, and ch
 | `timeZone` | The agency's "today", which sets relative dates and the daily reset. |
 | `logo.image` | URL of a horizontal logo, shown on a white badge. Leave empty for a text wordmark. You can also put an image file in `public/img/` and use `'/img/yourlogo.png'`. |
 | `logo.wordTop`, `logo.wordBottom` | Two-line text wordmark, used when there is no image or it fails to load. |
-| `theme.nav`, `theme.navText` | Header background and text. |
+| `theme.nav`, `theme.navText` | Header background and text. The `theme` colors apply when the color scheme is `brand`; the default `workspace` scheme uses the template colors. |
 | `theme.accent`, `theme.accentSoft` | Buttons, links, selected tabs, and light highlight backgrounds. |
 | `theme.highlight` | Alert accents. |
 | `theme.railTop`, `theme.railBottom` | The left rail's gradient. |
+| `ui` | Interaction screen text and behavior. See [8.5](#85-change-the-interaction-screen-text). |
 
 After the change is deployed, choose the brand in any of these ways:
 
@@ -569,7 +651,59 @@ Matching a real agency: take colors from their website (a browser's color picker
 
 **Don't delete brands.** Add new ones alongside the existing ones so earlier demos keep working.
 
-### 8.5 Edit other data
+### 8.5 Change the interaction screen text
+
+Each brand in `lib/brands.js` can have a `ui` block. The Ohio brand's block is the default for every brand that doesn't set its own, and a brand can override just the keys it needs.
+
+```js
+    ui: {
+      palette: 'workspace',
+      recordTitle: 'Agent Needed',
+      acceptSeconds: 55,
+      adherenceToast: true,
+      adherenceText: 'Out of Adherence: You are not scheduled for this time. Please select the correct status.',
+      presence: ['On Queue', 'Available', 'Away', 'Break', 'Meal', 'Busy', 'Offline'],
+      wrapCodes: ['Payment / Billing Inquiry', 'Refund Inquiry', 'Notice Response', 'Identity Verification', 'General Question'],
+      assistIntervalMs: 7000,
+      reasonContacted: 'Escalation to human agent',
+      resolution: 'Customer escalated before resolution'
+    },
+```
+
+| Key | What it controls |
+|---|---|
+| `palette` | `workspace` uses the template colors (the default). `brand` uses the brand's `theme` colors. Each viewer can override it in Settings > Color scheme. |
+| `recordTitle` | Title and short description of an interaction transferred from the virtual agent |
+| `acceptSeconds` | The inbox "Time to accept" countdown |
+| `adherenceToast`, `adherenceText` | Whether the yellow adherence toast appears when a call connects, and its text. Set `adherenceToast: false` to hide it. |
+| `presence` | The inbox status menu. The first entry is the starting status. |
+| `wrapCodes` | The Wrap up code list |
+| `assistIntervalMs` | Milliseconds between Agent Assist lines (press `]` to advance by hand) |
+| `reasonContacted`, `resolution` | Wording in the Transfer Summary |
+
+For example, to add a wrap up code, add it to `wrapCodes`, commit, and let Render redeploy.
+
+### 8.6 Change the Agent Assist scripts
+
+`lib/assist.js` holds what the caller and agent "say" on a live call and which knowledge article Agent Assist suggests for each line. Each script is a list of lines:
+
+```js
+  'tp-1002': [
+    { who: 'agent', text: 'Thank you for calling, this is {agent}. How can I help you today?' },
+    { who: 'cust', text: 'Can I pay it off monthly?', kb: 'KB0020417', hl: 'payment plan of up to 24 months' },
+  ],
+```
+
+| Field | Meaning |
+|---|---|
+| `who` | `agent` or `cust` (the caller) |
+| `text` | The line. `{agent}` and `{first}` become the agent's and the caller's first names. |
+| `kb` | Optional. The knowledge article (from the `kb` list in `lib/seed.js`) to suggest with this line. |
+| `hl` | Optional. A phrase from that article's text to highlight. Capitalization doesn't matter, but the words must match, or nothing is highlighted. |
+
+A script is picked by key, in this order: the Pilot scenario the call came from (for example `notice-paid`), then the taxpayer ID (for example `tp-1001`), then `default`. To give a new taxpayer their own suggestions, add a list under their taxpayer ID. If you add a new article, add it to `kb` in `lib/seed.js` first.
+
+### 8.7 Edit other data
 
 All in `lib/seed.js`:
 
@@ -581,7 +715,7 @@ All in `lib/seed.js`:
 
 The Genesys page simulator's queue and intent lists, and the Home page schedule and queue figures, are in `public/js/app.js`.
 
-### 8.6 Change data during a demo
+### 8.8 Change data during a demo
 
 Everything the app does goes through the API, so you can also set up a scenario with `curl` before recording. For example, add a phone to a taxpayer:
 
@@ -605,7 +739,7 @@ The server keeps all data in memory and builds it fresh from `lib/seed.js`:
 | **Settings > Reset demo data**, or `POST /api/admin/reset` | Data is reseeded |
 | Brand switch (Settings, `?brand=`) | Data is reseeded with the new brand |
 
-Reseeding brings back the original state, re-dates everything relative to today, and reapplies `DEMO_PHONES`. Anything done in the app since then (payments, released refunds, applied suspense payments, Pilot sessions, new contacts, notes) is gone. There is no database, so permanent changes go in `lib/seed.js`.
+Reseeding brings back the original state, re-dates everything relative to today, and reapplies `DEMO_PHONES`. Anything done in the app since then (payments, released refunds, applied suspense payments, Pilot sessions, interaction records, incidents, new contacts, notes) is gone. There is no database, so permanent changes go in `lib/seed.js`.
 
 Browser-side settings (signed-in persona, agent email, ringing, open tabs) are saved in the browser and are not affected by a reset, except that reset closes open tabs.
 
@@ -628,6 +762,10 @@ Browser-side settings (signed-in persona, agent email, ringing, open tabs) are s
 | Logo shows as text | The logo URL failed to load; the text wordmark is the fallback. Host the image in `public/img/` instead. |
 | "Release" is refused | Verify the taxpayer's identity first. |
 | Demo resets on every pop | Remove `brand=` from the pop URL. |
+| I want the old (version 2) call screen | Settings > Screen pops open > The taxpayer record, or add `view=taxpayer` to the pop URL. |
+| My brand colors aren't showing | The default color scheme is the workspace template. Choose Settings > Color scheme > Brand colors, or set `ui.palette: 'brand'` for the brand. |
+| Agent Assist is too slow or too fast | Press `]` to advance, or change `ui.assistIntervalMs`. |
+| The browser shows an old version after a deploy | Reload the page. The footer and Settings show the running version; `/api/version` shows the server's. |
 
 ---
 
@@ -635,5 +773,15 @@ Browser-side settings (signed-in persona, agent email, ringing, open tabs) are s
 
 - **API reference**: `https://YOUR-HOST/api-docs.html`
 - **Health check**: `https://YOUR-HOST/api/health` (version, brand, date seeded, whether Genesys lookup is configured)
+- **Version**: `https://YOUR-HOST/api/version` returns `{version, commit, startedAt}`. Release notes are in [`CHANGELOG.md`](https://github.com/jchadcole/snow-mock-ui/blob/main/CHANGELOG.md) and in Settings > Release notes.
+- **Interaction record API** (v3): `POST /api/ims`, `GET /api/ims`, `GET /api/ims/{id}`, `PATCH /api/ims/{id}`, `POST /api/ims/{id}/close`, `GET /api/assist`, `POST /api/incidents`. See `/api-docs.html`.
 - **Genesys page** in the app: URL templates for your host, a call simulator and recent pops
 - **README**: [../README.md](../README.md)
+
+### Cutting a release
+
+The version is in `package.json` and follows semantic versioning. To release:
+
+1. Bump `version` in `package.json`.
+2. Add a section to `CHANGELOG.md`.
+3. Commit, then tag it: `git tag vX.Y.Z && git push origin vX.Y.Z`.
