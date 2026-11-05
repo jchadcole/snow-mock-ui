@@ -4,6 +4,8 @@ A self-contained web app that looks and works like a ServiceNow CSM Configurable
 
 No dependencies and no build step: Node 18 or newer runs it.
 
+**[User guide](docs/USER_GUIDE.md)**: hosting on Render, running a demo, screen pops, Genesys Cloud setup, and customizing taxpayers, cell phones, agents and branding.
+
 ```
 node server.js          # http://localhost:8080
 PORT=3000 node server.js
@@ -68,7 +70,7 @@ All changes are saved on the server, so a pop from Genesys, a data action and th
 | (419) 555-0124 | Tom Harper | **Pilot virtual agent stories** (see below): 2025 refund held while received documentation is reviewed; notice 1234 for a 2024 balance he already paid by check |
 | any other | none | New contact |
 
-`DEMO_PHONES` adds your own test phone to a demo taxpayer, comma-separated, as either `6145550184:+13175551234` (seeded number : your number) or `3175551234=tp-1001` (your number = taxpayer ID).
+`DEMO_PHONES` adds your own test phone to a demo taxpayer, comma-separated, as either `6145550184:+13175551234` (seeded number : your number) or `3175551234=tp-1001` (your number = taxpayer ID). See the [user guide](docs/USER_GUIDE.md#81-map-your-cell-phone-to-a-taxpayer).
 
 ## Pilot virtual agent scenarios (Tom Harper)
 
@@ -123,7 +125,7 @@ Free instances sleep after 15 minutes idle; open the URL a minute before a recor
 | `API_KEY` | Required on `/api/screenpop` and `/api/taxpayers/lookup` when set |
 | `FRAME_ANCESTORS` | Who may iframe the app (default `*`) |
 | `PUBLIC_URL` | Base URL used in `popUrl` responses |
-| `DEMO_PHONES` | Remap seeded phones to real test numbers |
+| `DEMO_PHONES` | Add real test numbers to demo taxpayers: `yourNumber=taxpayerId` or `seededNumber:yourNumber`, comma-separated |
 | `RESET_DAILY` | `false` keeps data across days |
 | `GENESYS_REGION`, `GENESYS_CLIENT_ID`, `GENESYS_CLIENT_SECRET` | Optional: look up the caller from a `conversationId` alone |
 
