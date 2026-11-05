@@ -371,14 +371,28 @@
     const wc = $('#wrapCode'); if (wc) wc.onchange = () => { S.interaction.wrapCode = wc.value; };
   }
 
+  const script = (t, ix) => MockAI.transcript(t, S.brand, S.user.name.split(' ')[0], ix);
+  function botLines(bot, upto) {
+    return (upto == null ? bot.transcript : bot.transcript.slice(0, upto)).map((l) => l.who === 'event'
+      ? `<div class="tline event ${esc(l.kind || '')}">${ic(l.kind === 'verified' ? 'shield' : l.kind === 'link' ? 'globe' : l.kind === 'end' ? 'route' : 'spark', 'sm')}<span>${esc(l.text)}</span></div>`
+      : `<div class="tline ${l.who === 'bot' ? 'bot' : 'cust'}"><div class="tw">${l.who === 'bot' ? `${esc(bot.botName)} <small>virtual agent</small>` : esc(bot.caller || 'Caller')}</div>${esc(l.text)}</div>`).join('');
+  }
+  function botCard(bot) {
+    return `<div class="botcard"><div class="bh">${ic('spark', 'sm')} <b>${esc(bot.botName)}</b> virtual agent handoff<span class="tag2 ${bot.outcome === 'Contained' ? 'green' : 'blue'}">${esc(bot.outcome)}</span></div>
+      <div class="bi">${esc(bot.intent)} · ${esc(bot.taxType || '')}${bot.confidence ? ` · ${bot.confidence}% confidence` : ''}</div>
+      <div class="bslots">${Object.entries(bot.slots || {}).map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}<div><span>Authenticated by bot</span><b>${bot.authenticated ? esc(bot.authMethod || 'Yes') : 'No'}</b></div></div>
+      ${(bot.linksShared || []).map((l) => `<div class="small">${ic('globe', 'sm')} Link shared: <a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.title)}</a></div>`).join('')}</div>`;
+  }
   function ixColumn(t, ix) {
     const voice = ix.mediaType === 'voice';
-    const tr = MockAI.transcript(t, S.brand, S.user.name.split(' ')[0]);
+    const tr = script(t, ix);
     const lines = tr ? tr.slice(0, ix.tIdx || 0) : [];
+    const live = tr ? `${lines.map((l) => `<div class="tline ${l.who}"><div class="tw">${l.who === 'agent' ? esc(S.user.name) : esc(t.fullName)}</div>${esc(l.text)}</div>`).join('')}${ix.tIdx < tr.length ? '<div class="tline va"><span class="live">Listening</span></div>' : ''}` : '';
+    const botPart = ix.bot ? `${botLines({ ...ix.bot, caller: t.firstName })}<div class="handoff"><span>Transferred to ${esc(S.user.name)}</span></div>` : '';
     const ltab = ix.ltab || 'interaction';
     const body = ltab === 'transcript'
-      ? (tr ? `<div class="transcript" id="transcript">${lines.map((l) => `<div class="tline ${l.who}"><div class="tw">${l.who === 'agent' ? esc(S.user.name) : esc(t.fullName)}</div>${esc(l.text)}</div>`).join('')}${ix.tIdx < tr.length ? '<div class="tline va"><span class="live">Listening</span></div>' : ''}</div>` : '<div class="empty">Live transcript is scripted for the main demo caller (Charlotte Gong). Other calls show interaction details only.</div>')
-      : `<div class="ixmeta">
+      ? (tr || ix.bot ? `<div class="transcript" id="transcript">${botPart}${live}</div>` : '<div class="empty">Live transcript is scripted for the demo stories (Charlotte Gong, and Tom Harper after a Pilot transfer). Other calls show interaction details only.</div>')
+      : `${ix.bot ? botCard(ix.bot) : ''}<div class="ixmeta">
           <div><span>Phone</span><b>${esc(ix.phone || '-')}</b></div><div><span>Queue</span><span>${esc(ix.queue || '-')}</span></div>
           <div><span>Intent (virtual agent)</span><span>${esc(ix.intent || '-')}</span></div><div><span>Matched on</span><span>${esc(ix.matchedOn || '-')}</span></div>
           <div><span>Routing</span><span>Predictive routing</span></div><div><span>Conversation</span><span class="small" style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(ix.conversationId || '-')}</span></div></div>
@@ -410,6 +424,7 @@
           <div class="kv c4"><div><label>Refund amount</label><div class="v stat sm">${money(r.refund.amount)}</div></div><div><label>Method</label><div class="v">${esc(r.refund.method)}${r.refund.method === 'Direct deposit' && t.bank ? ` ••••${esc(t.bank.last4)}` : ''}</div></div>
           <div><label>${r.refund.issued ? 'Issued' : 'Expected'}</label><div class="v">${fmtD(r.refund.issued || r.refund.expected) || '-'}</div></div><div><label>Hold reason</label><div class="v">${esc(r.refund.hold || 'None')}</div></div>
           ${r.refund.offset ? `<div style="grid-column:span 2"><label>Offset</label><div class="v">${money(r.refund.offset.amount)} to ${esc(r.refund.offset.agency)} · paid ${money(r.refund.adjusted)}</div></div>` : ''}
+          ${r.documentation ? `<div><label>Processing status</label><div class="v">${esc(r.status)}</div></div><div><label>Return received</label><div class="v">${fmtD(r.filed)}</div></div><div style="grid-column:span 2"><label>Supporting documentation</label><div class="v green">${esc(r.documentation.status)} <span class="small muted">(received ${fmtD(r.documentation.received)}, notice ${esc(r.documentation.noticeId)})</span></div></div>` : ''}
           ${r.refund.releaseId ? `<div><label>Release</label><div class="v link">${esc(r.refund.releaseId)}</div></div>` : ''}</div>
           <div style="display:flex;gap:6px;margin-top:10px">${held ? `<button class="btn primary sm" data-a="release" data-rid="${r.id}">Release refund</button>` : ''}${r.refund.method !== 'Direct deposit' && !/Issued/.test(r.refund.status) ? `<button class="btn sm" data-a="dd" data-rid="${r.id}">Switch to direct deposit</button>` : ''}${/Issued/.test(r.refund.status) ? `<button class="btn sm" data-a="trace" data-rid="${r.id}">Trace refund</button>` : ''}</div></div>`;
       }).join('') || '<div class="empty">No refunds on file</div>';
@@ -422,7 +437,9 @@
           <table class="tbl"><tr><th>ID</th><th>Tax type</th><th>Period</th><th class="num">Tax</th><th class="num">Penalty</th><th class="num">Interest</th><th class="num">Paid</th><th class="num">Balance</th><th>Status</th><th>Due</th></tr>
           ${t.assessments.map((a) => `<tr><td>${esc(a.id)}</td><td>${esc(a.taxType)}</td><td>${esc(a.period)}</td><td class="num">${money(a.assessed)}</td><td class="num">${money(a.penalty)}</td><td class="num">${money(a.interest)}</td><td class="num">${money(a.paid)}</td><td class="num"><b>${money(a.balance)}</b></td><td>${esc(a.status)}</td><td>${fmtD(a.due)}</td></tr>`).join('') || '<tr><td colspan="10" class="empty">No assessments</td></tr>'}</table></div>
         <div class="card" style="padding:0"><div class="card-h" style="padding:10px 12px 0">Payments</div><table class="tbl"><tr><th>Date</th><th>Confirmation</th><th class="num">Amount</th><th>Method</th><th>Applied to</th><th>Status</th></tr>
-          ${t.payments.map((p) => `<tr><td>${fmtD(p.date)}</td><td>${esc(p.confirmation)}</td><td class="num">${money(p.amount)}</td><td>${esc(p.method)}</td><td>${esc(p.appliedTo)}</td><td>${esc(p.status || 'Posted')}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">No payments</td></tr>'}</table></div>`;
+          ${t.payments.map((p) => `<tr><td>${fmtD(p.date)}</td><td>${esc(p.confirmation)}</td><td class="num">${money(p.amount)}</td><td>${esc(p.method)}</td><td>${esc(p.appliedTo)}</td><td>${esc(p.status || 'Posted')}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">No payments</td></tr>'}</table></div>
+        ${(t.unapplied || []).length ? `<div class="card" style="padding:0;margin-top:10px"><div class="card-h" style="padding:10px 12px 0">Unapplied payments (suspense)</div><table class="tbl"><tr><th>ID</th><th>Payment</th><th class="num">Amount</th><th>Mailed</th><th>Received</th><th>Reason</th><th>Status</th><th></th></tr>
+          ${t.unapplied.map((u) => `<tr><td>${esc(u.id)}</td><td>${esc(u.method)}<div class="small muted">${esc(u.bank || '')}</div></td><td class="num">${money(u.amount)}</td><td>${fmtD(u.mailed)}</td><td>${fmtD(u.received)}</td><td class="small">${esc(u.reason)}</td><td><span class="tag2 ${/unapplied/i.test(u.status) ? 'amber' : 'green'}">${esc(u.status)}</span></td><td>${/unapplied/i.test(u.status) ? `<button class="btn sm primary" data-a="apply" data-arg="${u.id}">Apply to balance</button>` : ''}</td></tr>`).join('')}</table></div>` : ''}`;
     }
     if (tab === 'notices') {
       return `<div class="card" style="padding:0"><table class="tbl"><tr><th>Notice</th><th>Letter</th><th>Type</th><th>Mailed</th><th>Status</th><th>Response due</th><th></th></tr>
@@ -465,12 +482,12 @@
   }
   const histHeader = (title) => `<div class="card-h" style="margin:4px 0 0">${title}<span class="r">${ic('search', 'sm')}${ic('cal', 'sm')}</span></div>`;
   function historyHtml(list) {
-    const icon = { Chat: 'chat', Phone: 'phone', Email: 'mail', Notice: 'doc', Web: 'globe', Payment: 'cash', 'Payment plan': 'cash', Refund: 'cash', Identity: 'shield', Case: 'case', 'Account update': 'home2' };
+    const icon = { 'Virtual agent': 'spark', Chat: 'chat', Phone: 'phone', Email: 'mail', Notice: 'doc', Web: 'globe', Payment: 'cash', 'Payment plan': 'cash', Refund: 'cash', Identity: 'shield', Case: 'case', 'Account update': 'home2' };
     const cls = { Chat: '', Phone: 'phone', Email: 'mail', Notice: 'box', Web: 'eye', Payment: 'gift', Refund: 'gift', Identity: 'eye', Case: 'cart' };
     let out = '', last = null;
     list.forEach((a) => {
       const d = fmtD(a.date); if (d !== last) { out += `<div class="day"><span>${d}</span></div>`; last = d; }
-      out += `<div class="hrow ${a.date.slice(0, 10) === S.today ? 'new' : ''}"><span class="hi ${cls[a.type] ?? ''}">${ic(icon[a.type] || 'info')}</span><div><div class="hw"><b>${esc(a.subject)}</b></div><div class="ref">${esc(a.type)} · ${esc(a.direction || '')}${a.by ? ` · ${esc(a.by)}` : ''}${a.wrapCode ? ` · ${esc(a.wrapCode)}` : ''}</div>${a.text ? `<div class="ht" style="white-space:pre-wrap">${esc(a.text)}</div>` : ''}${a.ai ? `<div class="ai">${ic('spark', 'sm')}<span>Summary generated by Now Assist</span></div>` : ''}</div><span class="ago">${a.date.length > 10 ? fmtT(a.date) : ''}</span></div>`;
+      out += `<div class="hrow ${a.date.slice(0, 10) === S.today ? 'new' : ''}"><span class="hi ${cls[a.type] ?? ''}">${ic(icon[a.type] || 'info')}</span><div><div class="hw"><b>${esc(a.subject)}</b></div><div class="ref">${esc(a.type)} · ${esc(a.direction || '')}${a.by ? ` · ${esc(a.by)}` : ''}${a.wrapCode ? ` · ${esc(a.wrapCode)}` : ''}</div>${a.text ? `<div class="ht" style="white-space:pre-wrap">${esc(a.text)}</div>` : ''}${a.botSessionId ? `<div style="margin-top:4px"><button class="btn sm" data-a="botview" data-arg="${a.botSessionId}">${ic('spark', 'sm')} View ${esc(a.by || 'virtual agent')} transcript</button></div>` : a.ai ? `<div class="ai">${ic('spark', 'sm')}<span>Summary generated by Now Assist</span></div>` : ''}</div><span class="ago">${a.date.length > 10 ? fmtT(a.date) : ''}</span></div>`;
     });
     return `<div class="hist">${out || '<div class="empty">No activity</div>'}</div>`;
   }
@@ -481,7 +498,7 @@
   // ---------------------------------------------------------------- recommendations (guided actions)
   function recommendations(t) {
     const cards = []; const ix = S.interaction && S.interaction.taxpayerId === t.id ? S.interaction : null;
-    const held = t.returns.find((r) => r.refund && /hold/i.test(r.refund.status));
+    const held = t.returns.find((r) => r.refund && /hold/i.test(r.refund.status) && /identity/i.test(r.refund.hold || ''));
     const verified = t.identity.status === 'Verified';
     const undeliv = t.notices.find((n) => /undeliverable/i.test(n.status));
     if (t.representative) cards.push(rcard('blue', 'people', 'Authorization', `Representative on file: ${t.representative.name}`, `${t.representative.form} for ${t.representative.scope.toLowerCase()}, expires ${fmtD(t.representative.expires)}. Confirm the caller's name and firm before disclosing details.`, [['Confirmed', 'poaok', true]]));
@@ -499,6 +516,13 @@
     const off = t.returns.find((r) => r.refund?.offset);
     if (off) cards.push(rcard('blue', 'info', 'Explain', 'Refund was partially offset', `${money(off.refund.offset.amount)} went to ${off.refund.offset.agency}. The taxpayer must contact that agency.`, [['Email explanation', 'email', true]]));
     if (t.language !== 'English') cards.push(rcard('blue', 'globe', 'Accessibility', `Interpreter: ${t.language}`, 'Conference in the language line from Genesys Cloud, or transfer to a bilingual agent.', [['Add interpreter', 'interp', true]]));
+    const unp = (t.unapplied || []).find((u) => /unapplied/i.test(u.status));
+    if (unp && t.balance > 0) cards.unshift(rcard('', 'cash', 'Payment found', `Apply ${unp.method} for ${money(unp.amount)}`, `Received ${fmtD(unp.received)} and held in suspense (${unp.reason.toLowerCase()}). Applying it clears the balance and resolves the notice.`, [['Apply payment', 'apply', true, unp.id]]));
+    const appliedU = (t.unapplied || []).find((u) => /^applied/i.test(u.status));
+    if (appliedU) cards.unshift(rcard('ok', 'check', 'Completed', `${appliedU.method} applied`, `${money(appliedU.amount)} applied ${fmtD(appliedU.appliedOn)}. Balance ${money(t.balance)}.`, [['Email confirmation', 'email', true]]));
+    if (unp && !appliedU) cards.push(rcard('blue', 'globe', 'Self-service', 'Respond to a Letter or Notice', `If the payment can't be found, the taxpayer can respond online in ${S.brand.portal} with the notice ID and canceled check images.`, [['Email the link', 'email', false]]));
+    const docR = t.returns.find((r) => r.documentation && r.refund && /hold/i.test(r.refund.status));
+    if (docR) cards.push(rcard('blue', 'doc', 'Explain', 'Documentation received, under review', `${docR.taxYear} refund of ${money(docR.refund.amount)} is held for review. Documents were received ${fmtD(docR.documentation.received)}; nothing to resend.`, [['Email status', 'email', false]]));
     const oc = t.cases.find((c) => !['Resolved', 'Closed'].includes(c.state));
     if (oc) cards.push(rcard('blue', 'case', 'Open case', oc.number, `${oc.shortDescription} · ${oc.state}`, [['Open case', 'opencase', true, oc.id]]));
     const kb = pickKb(t);
@@ -509,7 +533,7 @@
     return `<div class="rcard"><span class="pill ${pill}">${ic(icon, 'sm')} ${esc(label)}</span><h5>${esc(title)}</h5><p>${esc(text)}</p><div class="rbtns">${buttons.map(([l, a, primary, arg]) => `<button class="btn ${primary ? 'primary' : ''}" data-a="${a}"${arg ? ` data-arg="${esc(arg)}"` : ''}>${esc(l)}</button>`).join('')}</div></div>`;
   }
   function pickKb(t) {
-    const kb = S.kbCache || []; const id = t.returns.some((r) => r.refund && /hold/i.test(r.refund.status)) ? 'KB0020415' : t.balance > 0 ? 'KB0020417' : t.notices.some((n) => /information/i.test(n.type)) ? 'KB0020419' : t.returns.some((r) => r.refund?.offset) ? 'KB0020420' : t.representative ? 'KB0020421' : t.payments.some((p) => p.status === 'Posting') ? 'KB0020423' : 'KB0020416';
+    const kb = S.kbCache || []; const id = (t.unapplied || []).some((u) => /unapplied/i.test(u.status)) ? 'KB0020426' : t.returns.some((r) => r.documentation && /hold/i.test(r.refund?.status || '')) ? 'KB0020425' : t.returns.some((r) => r.refund && /hold/i.test(r.refund.status)) ? 'KB0020415' : t.balance > 0 ? 'KB0020417' : t.notices.some((n) => /information/i.test(n.type)) ? 'KB0020419' : t.returns.some((r) => r.refund?.offset) ? 'KB0020420' : t.representative ? 'KB0020421' : t.payments.some((p) => p.status === 'Posting') ? 'KB0020423' : 'KB0020416';
     return kb.find((k) => k.id === id);
   }
 
@@ -534,6 +558,8 @@
       pay: () => payModal(t), plan: () => planModal(t), email: () => composeModal(t, b.dataset.kb), note: () => noteModal(t), newcase: () => caseModal(t, arg), opencase: () => openCase(arg),
       trace: () => { const r = t.returns.find((x) => x.id === arg); modal(`${ic('cash')} Refund trace`, `<div class="kv c3"><div><label>Amount</label><div class="v">${money(r.refund.adjusted || r.refund.amount)}</div></div><div><label>Issued</label><div class="v">${fmtD(r.refund.issued)}</div></div><div><label>Method</label><div class="v">${esc(r.refund.method)}</div></div><div><label>Trace number</label><div class="v">${esc(r.refund.trace || 'DD-' + digits(r.id).slice(-6))}</div></div><div><label>Account</label><div class="v">${t.bank ? `••••${esc(t.bank.last4)}` : 'Paper check'}</div></div></div>`, '<button class="btn primary" data-close>Close</button>'); outcome(t, 'Provided refund trace'); },
       save: () => toast('Record saved'), poaok: () => { outcome(t, `Confirmed representative ${t.representative.name}`); toast('Representative authorization confirmed'); render(); },
+      apply: () => applyModal(t, (t.unapplied || []).find((u) => u.id === arg) || (t.unapplied || [])[0]),
+      botview: async () => { const bs = (t.botSessions || []).find((x) => x.id === arg) || (await api(`/api/bot-sessions?taxpayerId=${t.id}`)).find((x) => x.id === arg); if (!bs) return toast('Transcript not found'); modal(`${ic('spark')} ${esc(bs.botName)} virtual agent · ${esc(bs.outcome)}`, `${botCard(bs)}<div class="small muted" style="margin:8px 0">${fmtDT(bs.date)} · ${esc(bs.phone)} · conversation ${esc(bs.conversationId)}</div><div class="transcript" style="padding:0">${botLines({ ...bs, caller: t.firstName })}</div>`, '<button class="btn primary" data-close>Close</button>', { wide: true }); },
       interp: () => { outcome(t, `Added ${t.language} interpreter`); toast(`${t.language} interpreter conferenced in (Genesys Cloud)`); render(); },
       hold: () => { S.interaction.held = !S.interaction.held; render(); }, mute: () => { S.interaction.muted = !S.interaction.muted; render(); },
       transfer: () => toast('Transfer is handled in Genesys Cloud (demo)'), wrap: () => wrapUpModal(t),
@@ -610,6 +636,18 @@
         : /information/i.test(n.type) ? `We need more information to process your return. Please send copies of all W-2 forms and your final pay stub by ${fmtD(n.due)}. You can upload documents in ${B.portal}.`
           : /offset/i.test(n.type) ? 'All or part of your refund was applied to a debt certified by another state agency. Contact that agency with questions about the debt.' : `This notice concerns your ${B.agency} account.`;
     modal(`${ic('doc')} ${esc(n.letter)} · ${esc(n.type)}`, `<div class="letter"><b>${esc(B.agency)}</b>\n${esc(fmtD(n.date))}\n\n${esc(t.fullName)}\n${esc((n.sentTo && /undeliverable/i.test(n.status) ? n.sentTo : a.line))}\n${esc(a.city)}, ${esc(a.state)} ${esc(a.zip)}\n\nNotice ${esc(n.id)}\n\nDear ${esc(t.type === 'Business' ? t.contact || t.fullName : t.firstName)},\n\n${esc(body)}\n\nSincerely,\nTaxpayer Services</div>`, `<button class="btn" data-close>Close</button>`, { wide: true });
+  }
+  function applyModal(t, u) {
+    if (!u) return toast('No unapplied payment');
+    const a = t.assessments.find((x) => x.noticeId && x.balance > 0) || t.assessments.find((x) => x.balance > 0);
+    if (!a) return toast('No balance to apply it to');
+    const n = t.notices.find((x) => x.id === a.noticeId);
+    modal(`${ic('cash')} Apply suspense payment`, `<div class="kv c3"><div><label>Payment</label><div class="v">${esc(u.method)}</div></div><div><label>Amount</label><div class="v stat sm">${money(u.amount)}</div></div><div><label>Received</label><div class="v">${fmtD(u.received)}</div></div><div><label>Apply to</label><div class="v">${esc(a.id)} · ${esc(a.taxType)} ${esc(a.period)}</div></div><div><label>Balance</label><div class="v">${money(a.balance)}</div></div><div><label>Notice</label><div class="v">${n ? esc(n.id) : '-'}</div></div></div>
+      <div class="callout" style="margin-top:10px">${esc(u.reason)}. Applying the payment clears the balance${n ? ` and resolves notice ${esc(n.id)}` : ''}.</div>`, `<button class="btn" data-close>Cancel</button><button class="btn primary" id="uOk">Apply payment</button>`);
+    $('#uOk').onclick = async () => {
+      const res = await act(() => api(`/api/taxpayers/${t.id}/unapplied/${u.id}/apply`, { method: 'POST', body: { assessmentId: a.id, by: S.user.name } }));
+      toast(`${esc(u.method)} applied · balance ${money(res.balance)}`); outcome(t, `Applied suspense payment ${u.method} (${money(u.amount)}) to ${a.id}${n ? `; notice ${n.id} resolved` : ''}`, 'apply'); closeModal(); refresh(t);
+    };
   }
   function payModal(t) {
     const a = t.assessments.find((x) => x.balance > 0);
@@ -689,12 +727,12 @@
   // scripted transcript for the main demo caller
   function advanceTranscript(t) {
     const ix = S.interaction; if (!ix || ix.taxpayerId !== t.id) return;
-    const tr = MockAI.transcript(t, S.brand, S.user.name.split(' ')[0]); if (!tr) return;
+    const tr = script(t, ix); if (!tr) return;
     clearTimeout(ix.tTimer);
     const step = () => {
       if (S.interaction !== ix || ix.tIdx >= tr.length) return;
       const line = tr[ix.tIdx];
-      if (line.gate && !ix.gates[line.gate]) return;
+      if (line.gate && !ix.gates[line.gate] && !(line.gate === 'identity' && (ix.verified || S.records[t.id]?.identity.status === 'Verified'))) return;
       ix.tIdx++; if (parseRoute().name === 'taxpayer') render();
       ix.tTimer = setTimeout(step, 1500 + line.text.length * 30);
     };
@@ -769,6 +807,8 @@
   async function pageGenesys(el) {
     const base = S.config.baseUrl || location.origin;
     const recent = await api('/api/screenpop/recent').catch(() => []);
+    const scen = await api('/api/bot-scenarios').catch(() => []);
+    const bots = await api('/api/bot-sessions').catch(() => []);
     const all = await api('/api/taxpayers?all=1');
     const samples = all.map((t) => [t.phone, `${t.fullName}${t.flags[0] ? ` · ${t.flags[0]}` : ''}`]);
     const seen = new Set(); const uniq = samples.filter(([n]) => !seen.has(n) && seen.add(n));
@@ -789,33 +829,56 @@
           <div class="mono"><b>Script web page</b><br>${esc(base)}/pop?phone={{Customer phone variable}}&amp;conversationId={{Scripter.Interaction ID}}&amp;queue={{Scripter.Queue Name}}&amp;agent={{Scripter.Agent Email}}&amp;embed=1<br><br>
             <b>Interaction Widget</b><br>${esc(base)}/pop?conversationId={{gcConversationId}}&amp;embed=1<br><br>
             <b>By return ID or SSN last 4 (collected by the bot)</b><br>${esc(base)}/pop?returnId={{ReturnId}}&amp;conversationId={{Scripter.Interaction ID}}</div></div></div>
+      ${scen.length ? `<div class="card" style="margin-top:14px"><div class="card-h">${ic('spark', 'sm')} Pilot virtual agent handoffs <span class="small muted" style="font-weight:400">· the bot runs in Genesys Cloud; these buttons send the sample data it would post</span> <span class="r small muted">Caller: Tom Harper ${esc(S.records['tp-1010']?.phones[0]?.number || '(419) 555-0124')} · demo SSN 900-55-6789 · DOB 03/22/1978</span></div>
+        <div class="grid2">${scen.map((x) => `<div class="scen"><b>${esc(x.title)}</b><div class="small muted">${esc(x.intent)} · ${x.outcome === 'Contained' ? 'Genesys posts the finished Pilot session; ServiceNow logs a contained virtual agent interaction on the record.' : 'Genesys posts Pilot\'s session, then transfers. The screen pop carries Pilot\'s context and transcript.'}</div>
+          <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><button class="btn primary sm" data-scen="${x.id}">${x.outcome === 'Contained' ? 'Send contained session' : `${ic('phone', 'sm')} Send transfer + screen pop`}</button>${x.outcome === 'Transferred' ? `<a class="btn sm" href="/pop?scenario=${x.id}">Open as pop URL</a>` : ''}</div></div>`).join('')}</div>
+        ${bots.length ? `<table class="tbl" style="margin-top:10px"><tr><th>When</th><th>Caller</th><th>Intent</th><th>Outcome</th><th>Authenticated</th><th>Conversation</th></tr>${bots.slice(0, 8).map((b) => `<tr class="click" data-opentp="${b.taxpayerId}"><td class="nowrap">${fmtDT(b.date)}</td><td>${esc(b.phone)}</td><td>${esc(b.intent)}</td><td><span class="tag2 ${b.outcome === 'Contained' ? 'green' : 'blue'}">${esc(b.outcome)}</span></td><td>${b.authenticated ? 'Yes' : 'No'}</td><td class="small">${esc(b.conversationId)}</td></tr>`).join('')}</table>` : ''}</div>` : ''}
       <h3 class="card-h" style="margin-top:14px">Recent screen pops (${recent.length})</h3>
       <div class="card" style="padding:0"><table class="tbl"><tr><th>Received</th><th>Phone</th><th>Agent</th><th>Queue</th><th>Intent</th><th>Matches</th><th>Conversation</th></tr>${recent.map((x) => `<tr><td class="nowrap">${fmtDT(x.receivedAt)}</td><td>${esc(x.phone)}</td><td>${esc(x.agent)}</td><td>${esc(x.queue)}</td><td>${esc(x.intent)}</td><td>${x.taxpayerIds.length}</td><td class="small">${esc(x.conversationId)}</td></tr>`).join('') || '<tr><td colspan="7" class="empty">None yet</td></tr>'}</table></div></div>`;
     const conv = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
     $('#gPush').onclick = async () => { const r = await fetch('/api/screenpop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: fieldVal('gPhone'), agent: fieldVal('gAgent'), queue: fieldVal('gQueue'), mediaType: fieldVal('gMedia'), intent: fieldVal('gIntent'), conversationId: conv() }) }).then((x) => x.json()); if (r.error) toast(esc(r.error), { cls: 'genesys' }); else if (!r.deliveredTo) toast('Screen pop sent, but no open workspace is listening for that agent', { cls: 'genesys' }); };
     $('#gUrl').onclick = () => { location.href = `/pop?${new URLSearchParams({ phone: fieldVal('gPhone'), conversationId: conv(), queue: fieldVal('gQueue'), mediaType: fieldVal('gMedia'), intent: fieldVal('gIntent') })}`; };
     $('#gSet').onclick = (e) => { e.preventDefault(); userMenu(); };
+    el.onclick = (e) => { const b = e.target.closest('[data-scen]'); if (b) return runScenario(scen.find((x) => x.id === b.dataset.scen)); const t = e.target.closest('[data-opentp]'); if (t && t.dataset.opentp) openTaxpayer(t.dataset.opentp); };
+  }
+
+  // Test without Genesys: sends the same sample Pilot session a Genesys data action would post (no bot is simulated here).
+  async function runScenario(sc) {
+    if (!sc) return;
+    const r = await act(() => api(`/api/bot-scenarios/${sc.id}/run`, { method: 'POST', body: { agent: S.settings.agentEmail || S.user.email, conversationId: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) } }));
+    const t = await loadTp(sc.taxpayerId, true);
+    if (sc.outcome === 'Contained') toast(`Contained ${esc(sc.botName)} session logged on ${esc(t.fullName)}'s record`, { ms: 6000 });
+    else if (!r.deliveredTo) toast('Handoff sent, but no workspace is listening for this agent', { cls: 'genesys' });
+    if (sc.outcome === 'Contained') openTaxpayer(sc.taxpayerId, 'activity'); else render();
   }
 
   // ---------------------------------------------------------------- screen pop handling
   async function handlePop(params, source = 'url') {
     const g = (k) => clean(params.get ? params.get(k) : params[k]);
     let phone = (g('phone') || g('ani') || g('callerId') || '').replace(/^tel:|^sip:/i, '').replace(/@.*/, '');
-    const conversationId = g('conversationId') || g('gcConversationId') || g('interactionId');
+    let conversationId = g('conversationId') || g('gcConversationId') || g('interactionId');
+    if (g('scenario')) {
+      try { const r = await api(`/api/bot-scenarios/${encodeURIComponent(g('scenario'))}/run`, { method: 'POST', body: { push: false, phone, conversationId } }); conversationId = r.session.conversationId; phone = phone || r.session.phone; } catch (e) { toast(`Scenario: ${esc(e.message)}`, { cls: 'genesys' }); }
+    }
     let customerName = g('customerName'); let lookedUpQueue = '';
     if (!phone && !g('taxpayerId') && !g('returnId') && !g('last4') && conversationId && S.config.genesysLookup) {
       try { const c = await api(`/api/genesys/conversations/${encodeURIComponent(conversationId)}`); phone = c.phone; customerName = customerName || c.customerName; lookedUpQueue = c.queue; } catch (e) { toast(`Genesys lookup failed: ${esc(e.message)}`, { cls: 'genesys' }); }
     }
     const ix = { startedAt: Date.now(), phone: fmtPhone(phone), conversationId, direction: g('direction') || 'Inbound', queue: g('queue') || lookedUpQueue, mediaType: g('mediaType') || 'voice', intent: g('intent'), customerName, verified: false, source, outcomes: [], gates: {}, tIdx: 0, ltab: 'interaction' };
+    if (conversationId) {
+      const bs = await api(`/api/bot-sessions?conversationId=${encodeURIComponent(conversationId)}`).catch(() => []);
+      if (bs[0]) { ix.bot = bs[0]; ix.intent = ix.intent || bs[0].intent; ix.queue = ix.queue || bs[0].queue; ix.ltab = 'transcript'; }
+    }
     let matches = []; let matchedOn = '';
-    if (g('taxpayerId')) { matches = [await api(`/api/taxpayers/${g('taxpayerId')}`).catch(() => null)].filter(Boolean); matchedOn = phone ? `phone ${fmtPhone(phone)}` : 'taxpayer ID'; }
+    if (!g('taxpayerId') && !phone && ix.bot?.taxpayerId) { matches = [await api(`/api/taxpayers/${ix.bot.taxpayerId}`)]; matchedOn = `${ix.bot.botName} virtual agent`; }
+    else if (g('taxpayerId')) { matches = [await api(`/api/taxpayers/${g('taxpayerId')}`).catch(() => null)].filter(Boolean); matchedOn = phone ? `phone ${fmtPhone(phone)}` : 'taxpayer ID'; }
     else if (g('returnId')) { matches = await api(`/api/taxpayers?returnId=${encodeURIComponent(g('returnId'))}`); matchedOn = `return ${g('returnId')}`; }
     else if (phone) { matches = await api(`/api/taxpayers?phone=${encodeURIComponent(phone)}${g('last4') ? `&last4=${g('last4')}` : ''}`); matchedOn = `phone ${fmtPhone(phone)}`; }
     else if (g('last4') || g('lastName')) { matches = await api(`/api/taxpayers?${new URLSearchParams({ last4: g('last4'), lastName: g('lastName') })}`); matchedOn = 'name / SSN'; }
     ix.matchedOn = matchedOn;
     const tab = g('tab') || (/pay|plan|balance|bill/i.test(ix.intent) ? 'balances' : /refund/i.test(ix.intent) ? 'overview' : /notice|letter/i.test(ix.intent) ? 'notices' : 'overview');
     if (phone || conversationId || matches.length) S.interaction = ix;
-    if (matches.length === 1) { ix.taxpayerId = matches[0].id; const t = await loadTp(matches[0].id, true); if (MockAI.transcript(t, S.brand, '')) ix.ltab = 'transcript'; advanceTranscript(t); return openTaxpayer(t.id, tab); }
+    if (matches.length === 1) { ix.taxpayerId = matches[0].id; const t = await loadTp(matches[0].id, true); if (script(t, ix)) ix.ltab = 'transcript'; advanceTranscript(t); return openTaxpayer(t.id, tab); }
     S.popResult = { matches, ix, tab }; go('#/pop-results');
   }
   function pagePopResults(el) {
