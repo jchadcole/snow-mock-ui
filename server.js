@@ -9,6 +9,18 @@ const { URL } = require('url');
 const { seed } = require('./lib/seed');
 const { getBrand, listBrands } = require('./lib/brands');
 const { scenarios } = require('./lib/scenarios');
+const { assistScript } = require('./lib/assist');
+
+// ---------- version ----------
+// The release version lives in package.json (semantic versioning; history in CHANGELOG.md, git tags vX.Y.Z).
+const VERSION = require('./package.json').version;
+const COMMIT = (() => {
+  if (process.env.RENDER_GIT_COMMIT) return process.env.RENDER_GIT_COMMIT.slice(0, 7);
+  if (process.env.GIT_COMMIT) return process.env.GIT_COMMIT.slice(0, 7);
+  try { return require('child_process').execSync('git rev-parse --short HEAD', { cwd: __dirname, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch { return 'local'; }
+})();
+const STARTED_AT = new Date().toISOString();
+const versionInfo = () => ({ version: VERSION, commit: COMMIT, startedAt: STARTED_AT, node: process.version, brand: brandId });
 
 const PORT = Number(process.env.PORT || 8080);
 const API_KEY = process.env.API_KEY || '';
@@ -31,6 +43,18 @@ function freshDb() {
     if (t && num) { t.phones.forEach((x) => { x.primary = false; }); t.phones.unshift({ type: 'Mobile (demo)', number: fmtPhone(num), primary: true }); }
   }
   d.botSessions = [];
+  d.incidents = [];
+  // Interaction (IMS) records behind the v3 workspace. Past inbound calls become closed interactions for Customer History.
+  d.imsSeq = 34230; d.ims = [];
+  const agent = d.users[0].name;
+  const past = [];
+  d.taxpayers.forEach((t) => t.activities.filter((a) => ['Phone', 'Chat'].includes(a.type) && a.direction === 'Inbound').forEach((a) => past.push([t, a])));
+  d.cases.filter((c) => c.channel === 'Phone').forEach((c) => { const t = d.taxpayers.find((x) => x.id === c.taxpayerId); if (t) past.push([t, { type: 'Phone', date: c.opened, by: c.assignedTo, subject: c.shortDescription, text: `Case ${c.number} opened.`, caseNumber: c.number }]); });
+  past.sort((x, y) => x[1].date.localeCompare(y[1].date)).forEach(([t, a]) => {
+    d.ims.push({ id: `IMS${String(d.imsSeq++).padStart(7, '0')}`, number: '', state: 'Closed Complete', type: a.type, taxpayerId: t.id, account: t.businessName || `${t.firstName} ${t.lastName}`, contact: t.type === 'Business' ? (t.contactName || t.businessName) : `${t.firstName} ${t.lastName}`, assignedTo: a.by && a.by !== 'System' ? a.by : agent, verified: true, shortDescription: a.subject || 'Agent Needed', transcript: [], opened: a.date, closed: a.date, wrapCode: a.wrapCode || '', notes: a.text || '', feedback: [], cases: a.caseNumber ? [a.caseNumber] : [], modifiedBy: '', phone: (t.phones[0] || {}).number || '' });
+    if (a.id) a.imsNumber = d.ims[d.ims.length - 1].id;
+  });
+  d.ims.forEach((x) => { x.number = x.id; });
   return d;
 }
 const tz = () => (db && db.brand.timeZone) || 'America/New_York';
@@ -187,8 +211,10 @@ const routes = [];
 const route = (method, pattern, handler, opts = {}) => routes.push({ method, re: new RegExp(`^${pattern.replace(/:(\w+)/g, '(?<$1>[^/]+)')}$`), handler, ...opts });
 const needTp = (id) => { const t = getTp(id); if (!t) throw nf(); return t; };
 
-route('GET', '/api/health', () => ({ status: 'ok', version: (process.env.RENDER_GIT_COMMIT || 'local').slice(0, 7), brand: brandId, seededOn: db.seededOn, time: nowLocal(), taxpayers: db.taxpayers.length, genesysLookup: !!GENESYS.clientId, frameAncestors: FRAME_ANCESTORS }));
-route('GET', '/api/config', (req) => ({ baseUrl: baseUrl(req), brand: db.brand, brands: listBrands(), today: todayInTz(), now: nowLocal(), taxYear: db.taxYear, groups: db.groups, genesysLookup: !!GENESYS.clientId, apiKeyRequired: !!API_KEY }));
+route('GET', '/api/version', () => versionInfo());
+route('GET', '/api/changelog', () => ({ version: VERSION, markdown: fs.existsSync(path.join(__dirname, 'CHANGELOG.md')) ? fs.readFileSync(path.join(__dirname, 'CHANGELOG.md'), 'utf8') : '' }));
+route('GET', '/api/health', () => ({ status: 'ok', version: VERSION, commit: COMMIT, brand: brandId, seededOn: db.seededOn, time: nowLocal(), taxpayers: db.taxpayers.length, genesysLookup: !!GENESYS.clientId, frameAncestors: FRAME_ANCESTORS }));
+route('GET', '/api/config', (req) => ({ version: VERSION, commit: COMMIT, baseUrl: baseUrl(req), brand: db.brand, brands: listBrands(), today: todayInTz(), now: nowLocal(), taxYear: db.taxYear, groups: db.groups, genesysLookup: !!GENESYS.clientId, apiKeyRequired: !!API_KEY }));
 route('GET', '/api/brands', () => listBrands());
 route('GET', '/api/users', () => db.users);
 
@@ -320,6 +346,55 @@ route('POST', '/api/cases/:id/notes', async (req, url, { id }) => {
   const n = { date: nowLocal(), author: b.by || '', text: b.text, type: b.type || 'Work note' }; c.notes.unshift(n); c.updated = n.date; return created(n);
 });
 
+// ---------- interactions (IMS) for the v3 workspace ----------
+const brandUi = () => ({ recordTitle: 'Agent Needed', ...(db.brand.ui || {}) });
+const callerLocation = (t) => t && t.address && t.address.city ? `${t.address.city} ${t.address.state}` : `${db.brand.state}`;
+function newIms(b) {
+  const t = b.taxpayerId ? getTp(b.taxpayerId) : (b.phone ? (search({ phone: b.phone }).length === 1 ? search({ phone: b.phone })[0] : null) : null);
+  const bot = b.botSessionId ? db.botSessions.find((x) => x.id === b.botSessionId) : (b.conversationId ? db.botSessions.find((x) => x.conversationId === b.conversationId) : null);
+  const x = {
+    id: `IMS${String(db.imsSeq++).padStart(7, '0')}`, state: b.state || 'New', type: b.mediaType && b.mediaType !== 'voice' ? 'Chat' : 'Phone', taxpayerId: t ? t.id : '',
+    account: t ? (t.businessName || nameOf(t)) : '', contact: t ? (t.type === 'Business' ? (t.contactName || t.businessName) : nameOf(t)) : (b.customerName || ''),
+    assignedTo: b.assignedTo || '', verified: !!(t && (t.identity.status === 'Verified' || (bot && bot.authenticated))), shortDescription: b.shortDescription || (bot && bot.outcome === 'Transferred' ? brandUi().recordTitle : b.intent || brandUi().recordTitle),
+    transcript: [], opened: nowLocal(), closed: '', wrapCode: '', notes: '', feedback: [], cases: [], modifiedBy: '', phone: fmtPhone(b.phone || (t ? t.phones[0].number : '')),
+    conversationId: b.conversationId || '', queue: b.queue || (bot && bot.queue) || '', intent: b.intent || (bot && bot.intent) || '', botSessionId: bot ? bot.id : '', scenario: bot ? bot.scenario : '', location: b.location || callerLocation(t),
+  };
+  x.number = x.id; db.ims.unshift(x); return x;
+}
+const imsOut = (x) => ({ ...x, bot: x.botSessionId ? db.botSessions.find((s) => s.id === x.botSessionId) || null : null });
+const needIms = (id) => { const x = db.ims.find((i) => i.id === id || i.conversationId === id); if (!x) throw nf(); return x; };
+route('GET', '/api/ims', (req, url) => { const p = Object.fromEntries(url.searchParams); return db.ims.filter((x) => (!p.taxpayerId || x.taxpayerId === p.taxpayerId) && (!p.assignedTo || x.assignedTo === p.assignedTo) && (!p.state || x.state === p.state)).sort((a, b) => b.opened.localeCompare(a.opened)); });
+route('POST', '/api/ims', async (req) => created(imsOut(newIms(await readBody(req)))));
+route('GET', '/api/ims/:id', (req, url, { id }) => imsOut(needIms(id)));
+route('PATCH', '/api/ims/:id', async (req, url, { id }) => {
+  const x = needIms(id); const b = await readBody(req);
+  for (const k of ['state', 'assignedTo', 'verified', 'shortDescription', 'wrapCode', 'notes', 'taxpayerId', 'account', 'contact', 'flagged']) if (b[k] !== undefined) x[k] = b[k];
+  if (b.feedback) x.feedback = b.feedback; if (b.caseNumber) x.cases.push(b.caseNumber);
+  return imsOut(x);
+});
+// Wrap-up: Genesys sets the wrap-up code and closes the interaction; the transcript is written to the record.
+route('POST', '/api/ims/:id/close', async (req, url, { id }) => {
+  const x = needIms(id); const b = await readBody(req);
+  x.state = 'Closed Complete'; x.closed = nowLocal(); x.modifiedBy = 'GenesysUE'; x.wrapCode = b.wrapCode || x.wrapCode; x.notes = b.notes || x.notes;
+  if (Array.isArray(b.transcript)) x.transcript = b.transcript; if (b.feedback) x.feedback = b.feedback; if (b.assignedTo) x.assignedTo = b.assignedTo; if (b.verified !== undefined) x.verified = !!b.verified;
+  const t = getTp(x.taxpayerId);
+  if (t) {
+    const a = activity(t, { type: x.type, direction: 'Inbound', by: x.assignedTo, subject: `${x.contact} called ${x.assignedTo}`, text: [x.wrapCode && `Wrap up: ${x.wrapCode}.`, x.notes].filter(Boolean).join(' '), wrapCode: x.wrapCode, conversationId: x.conversationId, queue: x.queue, durationSec: Number(b.durationSec || 0), imsNumber: x.number });
+    db.interactions.unshift({ id: x.number, taxpayerId: t.id, ...a });
+  }
+  return imsOut(x);
+});
+route('GET', '/api/assist', (req, url) => {
+  const p = Object.fromEntries(url.searchParams);
+  return assistScript(p.scenario, p.taxpayerId).map((l) => { const k = l.kb && db.kb.find((a) => a.id === l.kb); return { ...l, article: k ? { id: k.id, title: k.title, text: `${k.summary}${k.body ? ' ' + k.body : ''}` } : null }; });
+});
+route('POST', '/api/incidents', async (req) => {
+  const b = await readBody(req); const t = getTp(b.taxpayerId);
+  const inc = { id: `INC${String(10240 + db.incidents.length).padStart(7, '0')}`, taxpayerId: b.taxpayerId || '', shortDescription: b.shortDescription || 'Incident', category: b.category || 'Inquiry / Help', priority: b.priority || '4 - Low', state: 'New', opened: nowLocal(), by: b.by || '', ims: b.ims || '' };
+  db.incidents.push(inc); if (t) activity(t, { type: 'Incident', direction: 'Internal', by: inc.by, subject: `Incident ${inc.id} created`, text: inc.shortDescription });
+  return created(inc);
+});
+
 route('GET', '/api/kb', (req, url) => { const q = (url.searchParams.get('q') || '').toLowerCase(); return db.kb.filter((k) => !q || `${k.title} ${k.summary} ${k.category}`.toLowerCase().includes(q)); });
 route('GET', '/api/kb/:id', (req, url, { id }) => { const k = db.kb.find((x) => x.id === id); if (!k) throw nf(); return k; });
 route('GET', '/api/interactions', () => db.interactions);
@@ -402,6 +477,9 @@ function serveStatic(req, res, pathname) {
   if (!fs.existsSync(file)) { const html = `${file}.html`; file = fs.existsSync(html) ? html : path.join(PUBLIC_DIR, 'index.html'); }
   const headers = { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' };
   if (FRAME_ANCESTORS !== '*') headers['Content-Security-Policy'] = `frame-ancestors ${FRAME_ANCESTORS}`;
+  headers['X-App-Version'] = VERSION;
+  // Stamp the version into HTML so script and style URLs change on every release (no stale caches after a deploy).
+  if (file.endsWith('.html')) { res.writeHead(200, headers); return res.end(fs.readFileSync(file, 'utf8').replace(/__VERSION__/g, `${VERSION}-${COMMIT}`)); }
   res.writeHead(200, headers); fs.createReadStream(file).pipe(res);
 }
 
