@@ -8,6 +8,7 @@ const path = require('path');
 const { URL } = require('url');
 const { seed } = require('./lib/seed');
 const { getBrand, listBrands } = require('./lib/brands');
+const { scenarios } = require('./lib/scenarios');
 
 const PORT = Number(process.env.PORT || 8080);
 const API_KEY = process.env.API_KEY || '';
@@ -17,15 +18,19 @@ const GENESYS = { region: process.env.GENESYS_REGION || 'mypurecloud.com', clien
 const PUBLIC_DIR = path.join(__dirname, 'public');
 let brandId = process.env.BRAND || 'ohiotax';
 
-// DEMO_PHONES="6145551234=tp-1001" adds a real caller ID (e.g. the presenter's mobile) to a demo taxpayer.
+// DEMO_PHONES adds a real caller ID (e.g. the presenter's mobile) to a demo taxpayer. Comma-separated, either form:
+//   6145551234=tp-1001          (your number = taxpayer ID)
+//   6145550184:+16145551234     (seeded demo number : your number)
 function freshDb() {
   const brand = getBrand(brandId);
   const d = seed(brand, new Date());
   for (const pair of (process.env.DEMO_PHONES || '').split(',').map((x) => x.trim()).filter(Boolean)) {
-    const [num, tid] = pair.split('=').map((x) => x.trim());
-    const t = d.taxpayers.find((x) => x.id === tid);
+    let num, t;
+    if (pair.includes('=')) { const [n, tid] = pair.split('=').map((x) => x.trim()); num = n; t = d.taxpayers.find((x) => x.id === tid); }
+    else { const [seeded, n] = pair.split(':').map((x) => x.trim()); num = n; const k = String(seeded || '').replace(/\D/g, '').slice(-10); t = k && d.taxpayers.find((x) => x.phones.some((p) => p.number.replace(/\D/g, '').endsWith(k))); }
     if (t && num) { t.phones.forEach((x) => { x.primary = false; }); t.phones.unshift({ type: 'Mobile (demo)', number: fmtPhone(num), primary: true }); }
   }
+  d.botSessions = [];
   return d;
 }
 const tz = () => (db && db.brand.timeZone) || 'America/New_York';
@@ -92,7 +97,7 @@ const balanceOf = (t) => round2(t.assessments.reduce((a, x) => a + x.balance, 0)
 const openCases = (t) => db.cases.filter((c) => c.taxpayerId === t.id && !['Resolved', 'Closed', 'Cancelled'].includes(c.state));
 function refundSummary(t) {
   const r = t.returns.filter((x) => x.refund).sort((a, b) => b.taxYear - a.taxYear)[0];
-  return r ? { returnId: r.id, taxYear: r.taxYear, amount: r.refund.amount, status: r.refund.status, method: r.refund.method, hold: r.refund.hold || '' } : null;
+  return r ? { returnId: r.id, taxYear: r.taxYear, amount: r.refund.amount, status: r.refund.status, method: r.refund.method, hold: r.refund.hold || '', filed: r.filed || '', returnStatus: r.status, documentationStatus: r.documentation?.status || '' } : null;
 }
 function summary(t) {
   const rf = refundSummary(t); const oc = openCases(t);
@@ -103,7 +108,8 @@ function summary(t) {
   };
 }
 function fullRecord(t) {
-  return { ...t, fullName: nameOf(t), balance: balanceOf(t), refundSummary: refundSummary(t), cases: db.cases.filter((c) => c.taxpayerId === t.id).sort((a, b) => b.opened.localeCompare(a.opened)), interactions: db.interactions.filter((i) => i.taxpayerId === t.id) };
+  const { demoSsn, ...rest } = t;
+  return { ...rest, botSessions: db.botSessions.filter((x) => x.taxpayerId === t.id), fullName: nameOf(t), balance: balanceOf(t), refundSummary: refundSummary(t), cases: db.cases.filter((c) => c.taxpayerId === t.id).sort((a, b) => b.opened.localeCompare(a.opened)), interactions: db.interactions.filter((i) => i.taxpayerId === t.id) };
 }
 function search(p) {
   const q = (p.q || '').trim().toLowerCase();
@@ -118,6 +124,7 @@ function search(p) {
   return db.taxpayers.filter((t) => {
     if (phone && !(phone.length >= 7 && t.phones.some((x) => phoneKey(x.number).endsWith(phone)))) return false;
     if (tin && !digits(t.tin).endsWith(tin.slice(-4))) return false;
+    if (tin.length === 9 && t.demoSsn && t.demoSsn !== tin) return false;
     if (last && !(t.lastName || '').toLowerCase().startsWith(last) && !(t.businessName || '').toLowerCase().startsWith(last)) return false;
     if (dob && t.dob !== dob) return false;
     if (acct && !t.accounts.some((a) => a.number.toLowerCase() === acct)) return false;
@@ -138,6 +145,8 @@ function lookupResult(matches, req, extra = {}) {
     found: matches.length > 0, count: matches.length, taxpayerId: one?.id || '', fullName: s?.fullName || '', firstName: one?.firstName || '', language: one?.language || '',
     identityStatus: s?.identity || '', refundStatus: s?.refund?.status || '', refundAmount: s?.refund?.amount ?? 0, refundHold: s?.refund?.hold || '', balanceDue: s?.balance ?? 0,
     openCaseNumber: s?.openCaseNumber || '', representative: s?.representative || '',
+    refundMethod: s?.refund?.method || '', refundTaxYear: s?.refund?.taxYear ?? 0, returnReceived: s?.refund?.filed || '', returnStatus: s?.refund?.returnStatus || '', documentationStatus: s?.refund?.documentationStatus || '',
+    openNoticeId: one ? (one.notices.find((n) => n.amount && !/paid|resolved/i.test(n.status))?.id || '') : '', unappliedPayments: one ? one.unapplied.filter((u) => /unapplied/i.test(u.status)).length : 0,
     popUrl: `${baseUrl(req)}/pop?${qs}`, matches: matches.map(summary),
   };
 }
@@ -314,6 +323,55 @@ route('POST', '/api/cases/:id/notes', async (req, url, { id }) => {
 route('GET', '/api/kb', (req, url) => { const q = (url.searchParams.get('q') || '').toLowerCase(); return db.kb.filter((k) => !q || `${k.title} ${k.summary} ${k.category}`.toLowerCase().includes(q)); });
 route('GET', '/api/kb/:id', (req, url, { id }) => { const k = db.kb.find((x) => x.id === id); if (!k) throw nf(); return k; });
 route('GET', '/api/interactions', () => db.interactions);
+
+// ---------- suspense (unapplied) payments ----------
+route('POST', '/api/taxpayers/:id/unapplied/:uid/apply', async (req, url, { id, uid }) => {
+  const t = needTp(id); const b = await readBody(req); const u = t.unapplied.find((x) => x.id === uid); if (!u) throw nf();
+  if (!/unapplied/i.test(u.status)) throw bad('Payment already applied');
+  const a = t.assessments.find((x) => x.id === b.assessmentId) || t.assessments.find((x) => x.balance > 0);
+  if (!a) throw bad('No balance to apply the payment to');
+  const amt = Math.min(u.amount, a.balance);
+  a.paid = round2(a.paid + amt); a.balance = round2(a.balance - amt); if (a.balance === 0) a.status = 'Paid';
+  u.status = `Applied to ${a.id}`; u.appliedOn = todayInTz();
+  const pay = { id: newId('pmt'), date: u.received, amount: amt, method: u.method, confirmation: u.id, appliedTo: a.id, status: 'Posted (from suspense)', takenBy: b.by || '' };
+  t.payments.unshift(pay);
+  const n = t.notices.find((x) => x.id === a.noticeId); if (n && a.balance === 0) n.status = 'Resolved - payment applied';
+  setFlag(t, 'Unapplied payment', false); if (balanceOf(t) === 0) setFlag(t, 'Balance due', false);
+  activity(t, { type: 'Payment', direction: 'Internal', by: b.by || 'Agent', subject: `Suspense payment applied (${u.method})`, text: `$${amt.toFixed(2)} received ${u.received} applied to ${a.id} (${a.period}).${n ? ` Notice ${n.id} resolved.` : ''}` });
+  return { payment: pay, balance: balanceOf(t), taxpayer: fullRecord(t) };
+});
+
+// ---------- virtual agent (Pilot) sessions ----------
+route('GET', '/api/bot-scenarios', () => scenarios(db.brand, db.taxYear));
+function saveBotSession(b) {
+  const t = b.taxpayerId ? getTp(b.taxpayerId) : (b.phone ? search({ phone: b.phone })[0] : null);
+  const s = {
+    id: newId('bot'), date: nowLocal(), conversationId: b.conversationId || `demo-${Date.now()}`, phone: fmtPhone(b.phone || (t ? t.phones[0].number : '')), taxpayerId: t ? t.id : '',
+    botName: b.botName || 'Pilot', scenario: b.scenario || '', intent: b.intent || '', taxType: b.taxType || '', confidence: Number(b.confidence || 0),
+    outcome: b.outcome || 'Contained', queue: b.queue || '', authenticated: b.authenticated === true || b.authenticated === 'true', authMethod: b.authMethod || '', slots: Object.fromEntries(Object.entries(b.slots || {}).filter(([, v]) => v !== '' && v != null)), linksShared: b.linksShared || [],
+    transcript: Array.isArray(b.transcript) ? b.transcript : String(b.transcript || '').split('\n').map((x) => x.trim()).filter(Boolean).map((line) => { const m = line.match(/^([^:]{1,30}):\s*(.*)$/); if (!m) return { who: 'bot', text: line }; return { who: m[1].trim().toLowerCase() === String(b.botName || 'Pilot').toLowerCase() ? 'bot' : 'cust', text: m[2] }; }), summary: b.summary || '',
+  };
+  db.botSessions.unshift(s); db.botSessions = db.botSessions.slice(0, 100);
+  if (t) {
+    activity(t, { type: 'Virtual agent', direction: 'Inbound', by: s.botName, subject: `${s.botName} (virtual agent): ${s.intent || 'Inbound call'} - ${s.outcome.toLowerCase()}`, text: s.summary, conversationId: s.conversationId, botSessionId: s.id, wrapCode: s.outcome === 'Contained' ? 'Contained by virtual agent' : 'Transferred to agent', ai: true });
+    if (s.outcome === 'Contained') db.interactions.unshift({ id: newId('ix'), date: s.date, taxpayerId: t.id, type: 'Virtual agent', text: s.summary, wrapCode: 'Contained by virtual agent', conversationId: s.conversationId, queue: s.queue, by: s.botName });
+  }
+  return s;
+}
+route('POST', '/api/bot-sessions', async (req) => created(saveBotSession(await readBody(req))), { secure: true });
+route('GET', '/api/bot-sessions', (req, url) => { const c = url.searchParams.get('conversationId'); const tid = url.searchParams.get('taxpayerId'); return db.botSessions.filter((s) => (!c || s.conversationId === c) && (!tid || s.taxpayerId === tid)); });
+// Run a scripted scenario: saves the bot session; for a transfer, also pushes the screen pop to `agent` unless push is false.
+route('POST', '/api/bot-scenarios/:id/run', async (req, url, { id }) => {
+  const sc = scenarios(db.brand, db.taxYear).find((x) => x.id === id); if (!sc) throw nf(); const b = await readBody(req);
+  const t = getTp(sc.taxpayerId); const phone = b.phone || t.phones[0].number;
+  const s = saveBotSession({ ...sc, scenario: sc.id, phone, taxpayerId: t.id, conversationId: b.conversationId });
+  let delivered = 0;
+  if (sc.outcome === 'Transferred' && b.push !== false) {
+    const pop = { id: newId('pop'), receivedAt: nowLocal(), agent: (b.agent || '*').toLowerCase(), phone: fmtPhone(phone), conversationId: s.conversationId, direction: 'Inbound', queue: sc.queue, mediaType: 'voice', customerName: nameOf(t), intent: sc.intent, taxpayerIds: [t.id], tab: 'notices', botSessionId: s.id };
+    delivered = pushScreenPop(pop);
+  }
+  return { session: s, deliveredTo: delivered, popUrl: `${baseUrl(req)}/pop?${new URLSearchParams({ taxpayerId: t.id, phone, conversationId: s.conversationId, queue: sc.queue, intent: sc.intent })}` };
+});
 
 route('POST', '/api/screenpop', async (req, url) => {
   const b = { ...Object.fromEntries(url.searchParams), ...(await readBody(req)) }; delete b.apiKey;

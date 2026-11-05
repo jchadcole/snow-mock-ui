@@ -45,9 +45,29 @@ All changes are saved on the server, so a pop from Genesys, a data action and th
 | (513) 555-0155 | Elena Ruiz, CPA (for Thomas Reed) | Authorized representative, amended return |
 | (216) 555-0161 | Anika Choudhury | Estimated payment still posting |
 | (330) 555-0177 | Maria Delgado | Spanish speaker, refund partly offset to child support |
+| (419) 555-0124 | Tom Harper | **Pilot virtual agent stories** (see below): 2025 refund held while received documentation is reviewed; notice 1234 for a 2024 balance he already paid by check |
 | any other | none | New contact |
 
-`DEMO_PHONES=3175551234=tp-1001,...` adds your own test phone to a demo taxpayer (format `number=taxpayerId`). See the [user guide](docs/USER_GUIDE.md#81-map-your-cell-phone-to-a-taxpayer).
+`DEMO_PHONES` adds your own test phone to a demo taxpayer, comma-separated, as either `6145550184:+13175551234` (seeded number : your number) or `3175551234=tp-1001` (your number = taxpayer ID). See the [user guide](docs/USER_GUIDE.md#81-map-your-cell-phone-to-a-taxpayer).
+
+## Pilot virtual agent scenarios (Tom Harper)
+
+The virtual agent ("Pilot") runs in Genesys Cloud. This app only shows what ServiceNow would show.
+
+**1. Refund status, contained by Pilot.** Pilot authenticates Tom with SSN and date of birth. It then explains that his 2025 refund of $842.17 (direct deposit, return received Apr 14) is held while supporting documentation is reviewed. The documentation has been received, so nothing needs to be resent. No agent is involved. Genesys posts the session (`POST /api/bot-sessions`, outcome `Contained`). The record then shows a **contained virtual agent interaction** in Activity, with Pilot's summary and a **View Pilot transcript** button.
+- For Pilot's lookup, use `GET /api/taxpayers/lookup?ssn=900556789&dob=1978-03-22`. These are demo values: SSN 900-55-6789, DOB 03/22/1978. The response includes `refundStatus`, `refundAmount`, `refundMethod`, `returnReceived`, `returnStatus` and `documentationStatus`.
+
+**2. Notice for a payment already made, transferred to an agent.** Pilot collects notice 1234, tax year 2024, $2,200, and a check mailed July 1. It shares the Respond to a Letter or Notice link, and Tom asks for a live agent. Genesys posts the session (outcome `Transferred`), then screen pops with the same `conversationId`. The agent sees:
+- a **Pilot handoff card** with intent, confidence, collected details and the shared link;
+- **Pilot's transcript**, then a "Transferred to" divider and the live call transcript.
+
+The agent verifies Tom and finds his check in **Unapplied payments (suspense)**. One click on **Apply payment** clears the balance and resolves the notice. The agent can then email a confirmation and wrap up.
+
+Without Genesys you can use:
+- **Genesys page > Pilot virtual agent handoffs**: sends the same sample sessions Genesys would post.
+- **`/pop?scenario=notice-paid`**: opens the transfer pop directly.
+
+Import `genesys/log-bot-session.json` to post real Pilot sessions. Its `transcript` input takes one `Speaker: text` line per utterance.
 
 ## Screen pops from Genesys Cloud
 
@@ -65,6 +85,7 @@ You can also pass `taxpayerId`, `returnId` or `last4` in place of `phone`. `tab=
 - `lookup-taxpayer-by-phone.json`: for the bot or IVR, returns refund status, balance and identity status before routing.
 - `push-screen-pop.json`
 - `log-interaction.json`
+- `log-bot-session.json`: Pilot's session (contained or transferred) with summary, details and transcript
 
 Full reference: `/api-docs.html` on the running app.
 
@@ -82,7 +103,7 @@ Free instances sleep after 15 minutes idle; open the URL a minute before a recor
 | `API_KEY` | Required on `/api/screenpop` and `/api/taxpayers/lookup` when set |
 | `FRAME_ANCESTORS` | Who may iframe the app (default `*`) |
 | `PUBLIC_URL` | Base URL used in `popUrl` responses |
-| `DEMO_PHONES` | Add real test numbers to demo taxpayers: `number=taxpayerId,...` |
+| `DEMO_PHONES` | Add real test numbers to demo taxpayers: `yourNumber=taxpayerId` or `seededNumber:yourNumber`, comma-separated |
 | `RESET_DAILY` | `false` keeps data across days |
 | `GENESYS_REGION`, `GENESYS_CLIENT_ID`, `GENESYS_CLIENT_SECRET` | Optional: look up the caller from a `conversationId` alone |
 

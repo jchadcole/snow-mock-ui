@@ -37,6 +37,7 @@ Where things are in the repo:
 | `server.js` | The web server, API, screen-pop push, and env var handling |
 | `lib/seed.js` | All demo data: agents, taxpayers, returns, notices, cases, knowledge articles |
 | `lib/brands.js` | Agency branding: names, forms, area codes, cities, logo, colors |
+| `lib/scenarios.js` | Scripted Pilot virtual agent sessions (intents, collected details, transcripts) |
 | `public/` | The workspace app (`index.html`, `js/app.js`, `js/ai.js`, `css/app.css`) |
 | `public/api-docs.html` | API reference, served at `/api-docs.html` |
 | `genesys/` | Genesys Cloud data action definitions to import |
@@ -177,9 +178,56 @@ The transcript is scripted. Each agent line waits for the matching action (verif
 | (513) 555-0155 | Elena Ruiz, CPA, for Thomas Reed | Authorized representative with a power of attorney, asking about an amended return. |
 | (216) 555-0161 | Anika Choudhury | Estimated payment still posting. |
 | (330) 555-0177 | Maria Delgado | Spanish speaker; refund partly offset to child support. |
+| (419) 555-0124 | Tom Harper | The two Pilot virtual agent scenarios. See [5.1](#51-pilot-virtual-agent-scenarios-tom-harper). |
 | any other | none | No match, so the agent creates a new contact. |
 
-Only Charlotte has a scripted transcript. Other calls show the interaction details instead.
+Charlotte and Tom have scripted transcripts. Other calls show the interaction details instead.
+
+### 5.1 Pilot virtual agent scenarios (Tom Harper)
+
+The virtual agent, "Pilot", runs in Genesys Cloud. This app shows only the ServiceNow side: what Pilot logged, and what the agent sees after a transfer.
+
+**Tom Harper**: (419) 555-0124, taxpayer ID `tp-1010`. Demo SSN 900-55-6789, date of birth 03/22/1978, which Pilot uses for its SSN and date-of-birth lookup.
+
+- His 2025 return was received April 14. The $842.17 refund, going by direct deposit, is on hold for "Supporting documentation review". The documents have arrived and are waiting for review; the Refunds tab shows this.
+- Billing Notice BN-01 (`NTC0001234`) says he owes $2,200.00 for 2024.
+- His check #1047 for $2,200 was mailed July 1 and received July 8. It sits in **Unapplied payments (suspense)** because it came without a voucher or notice number.
+
+#### Use case 1: Refund status, contained by Pilot
+
+Pilot authenticates Tom with his SSN and date of birth and tells him the refund status. No agent is involved and there is no screen pop.
+
+1. Genesys posts the finished session to `POST /api/bot-sessions` with outcome `Contained`.
+2. Tom's **Activity** tab shows "Pilot (virtual agent): Refund status - contained", with Pilot's summary.
+3. **View Pilot transcript** opens the full conversation: intent and confidence, the keypad SSN and date-of-birth entries, "Identity verified", and the refund lookup.
+4. The session also appears under **Pilot virtual agent handoffs** on the Genesys page.
+
+![Contained Pilot session in Tom's activity](img/pilot-contained-refund.png)
+
+#### Use case 2: Notice for a payment already made, transferred to an agent
+
+Tom calls about notice 1234 and says he already paid by check. Pilot collects the details, shares the Respond to a Letter or Notice link, and transfers him to an agent.
+
+1. Genesys posts the session with outcome `Transferred`, then screen pops with the **same** `conversationId`. The pop rings in the inbox as usual.
+2. The **Transcript** tab shows Pilot's conversation first, then a "Transferred to (agent)" divider, then the live call, which advances as the agent acts.
+3. The **Interaction** tab shows the **Pilot handoff card**: intent and confidence; the details Pilot collected (notice 1234, tax year 2024, $2,200, paid by check mailed July 1, canceled check image unknown); the link Pilot shared; and the transfer reason.
+
+![Transferred call popping in the workspace](img/pilot-transfer-pop.png)
+
+![Pilot handoff card](img/pilot-handoff-card.png)
+
+The agent then:
+
+1. **Verifies identity.** Pilot didn't authenticate Tom on this call.
+2. **Applies the payment**, from the **Payment found** recommendation or from **Balances & payments > Unapplied payments**. The balance drops to $0 and the notice becomes "Resolved - payment applied".
+3. **Emails a confirmation**, which Now Assist drafts.
+4. **Logs the call and wraps up.** The AI summary includes Pilot's context.
+
+#### Running the Pilot scenarios without Genesys
+
+- **Genesys page > Pilot virtual agent handoffs**: **Send contained session** logs use case 1. **Send transfer + screen pop** sends use case 2 to the agent email in Settings, where it rings in the inbox.
+- **URL**: `/pop?scenario=notice-paid` logs the transfer session and opens the pop directly. `/pop?scenario=refund-status` logs the contained session.
+- **Reset**: **Settings > Reset demo data** puts Tom's check back in suspense, restores his balance, and clears all Pilot sessions.
 
 ### Retail demo
 
@@ -208,6 +256,7 @@ https://YOUR-HOST/pop?phone=6145550184&conversationId=abc-123&queue=Individual%2
 | `conversationId` (or `gcConversationId`, `interactionId`) | Genesys conversation ID. Shown on the call card and saved with the wrap-up. If no phone is given and the server has Genesys credentials, the caller's number is looked up from Genesys. |
 | `queue`, `intent`, `direction`, `mediaType` | Shown on the call card. `mediaType` is `voice`, `chat` or `message`. |
 | `customerName` | Shown when there is no match. |
+| `scenario` | Run a scripted Pilot session first, then pop: `notice-paid` (transfer) or `refund-status` (contained). See [5.1](#51-pilot-virtual-agent-scenarios-tom-harper). |
 | `tab` | Open on a specific tab: `overview`, `returns`, `refunds`, `balances`, `notices`, `cases`, `identity`, `activity`, `profile`. |
 | `embed=1` | Compact layout for an iframe. Turned on automatically when the app is framed; `embed=0` turns it off. |
 | `agent` | Sets this browser's agent email for push pops (same as Settings). |
@@ -245,7 +294,7 @@ The **Genesys** page (phone icon on the left rail) has a simulator. Pick a calle
 - **Push screen pop (API)** calls `POST /api/screenpop`, as a Genesys data action would.
 - **Open pop URL** navigates to `/pop?...`, as a Script web page would.
 
-It also shows the URL templates for your host and the last 50 pops received.
+It also shows the URL templates for your host, the last 50 pops received, and a **Pilot virtual agent handoffs** section that runs Tom Harper's two scenarios and lists recent Pilot sessions.
 
 ---
 
@@ -259,6 +308,7 @@ Pick the pattern that suits the demo. You can combine them.
 | Interaction Widget | The record in a tab of the Genesys interaction | An Interaction Widget integration |
 | Push to a separate browser | ServiceNow on its own screen pops when the agent answers | The Push Screen Pop data action, called from a Script or flow |
 | Bot / IVR lookup | The virtual agent knows the refund status before transferring | The Lookup data action in Architect |
+| Pilot session log | The record shows what the virtual agent did, and the agent gets a handoff card | The Log Bot Session data action at the end of the bot flow |
 
 ### 7.1 Import the data actions
 
@@ -271,13 +321,14 @@ Pick the pattern that suits the demo. You can combine them.
    | `lookup-taxpayer-by-phone.json` | Bot or IVR lookup before routing | `phone` | `found`, `count`, `taxpayerId`, `fullName`, `firstName`, `language`, `identityStatus`, `refundStatus`, `refundAmount`, `refundHold`, `balanceDue`, `openCaseNumber`, `representative`, `popUrl` |
    | `push-screen-pop.json` | Pop the agent's browser | `phone`, `agentEmail`, plus optional `conversationId`, `queue`, `mediaType`, `intent`, `taxpayerId` | `found`, `count`, `taxpayerId`, `fullName`, `popUrl`, `deliveredTo` |
    | `log-interaction.json` | Write a call record to the taxpayer's Activity | `taxpayerId`, plus `direction`, `subject`, `note`, `wrapCode`, `conversationId`, `queue`, `durationSec` | `activityId` |
+   | `log-bot-session.json` | Save a Pilot session (contained or transferred) | `conversationId`, `outcome`, plus `phone` or `taxpayerId`, `intent`, `taxType`, `confidence`, `queue`, `authenticated`, `authMethod`, `summary`, `transcript`, `noticeNumber`, `noticeTaxYear`, `noticeAmount`, `paymentMethod`, `paymentDate`, `transferReason` | `botSessionId`, `taxpayerId` |
 
 4. Each file points at `https://snow-mock-ui.onrender.com`. If your host is different, edit the **Request URL Template** on the action's **Setup** tab.
 5. Use **Test** on each action (for example, phone `+16145550184`), then **Publish**.
 
 ### 7.2 Bot or IVR lookup (Architect)
 
-In the inbound call or bot flow, call **Lookup Taxpayer by Phone** with `Call.Ani`. Save the outputs to flow variables and use them:
+In the inbound call or bot flow, call **Lookup Taxpayer by Phone** with `Call.Ani`. To look up by SSN and date of birth instead, as Pilot does, call `GET /api/taxpayers/lookup?ssn=900556789&dob=1978-03-22` (for example by copying the lookup action and changing its URL). The lookup also returns `refundMethod`, `returnReceived`, `returnStatus`, `documentationStatus`, `openNoticeId` and `unappliedPayments`. Save the outputs to flow variables and use them:
 
 - Say "I see your refund of {refundAmount} is on hold for identity verification" when `refundStatus` is "On hold".
 - Set participant data (for example `taxpayerId`, `intent`, `refundStatus`) before **Transfer to ACD**, so the Script and the agent can use it.
@@ -318,6 +369,18 @@ This is the "screen pop in ServiceNow" moment from the demo video: Genesys on on
 
 The workspace's own **Log call & wrap up** writes the activity for you. To log from Genesys instead, call **Log Interaction** at wrap-up with the `taxpayerId` from the lookup.
 
+### 7.7 Pilot sessions and the handoff card
+
+At the end of the bot flow, call **Log Bot Session** with:
+
+- `conversationId`: `Flow.ConversationId`. For a transfer this must be the same conversation ID the screen pop uses, or the handoff card won't appear.
+- `outcome`: `Contained` or `Transferred`.
+- `phone` (`Call.Ani`) or `taxpayerId`, so the session is filed on the right record.
+- `transcript`: one utterance per line, written as `Speaker: text`, for example `Pilot: How can I help you today?`. Lines whose speaker matches the bot's name are shown as the bot; others as the caller.
+- The collected details (`noticeNumber`, `noticeTaxYear`, `noticeAmount`, `paymentMethod`, `paymentDate`, `transferReason`), which fill the handoff card.
+
+For a transfer, call it **before** Transfer to ACD, so the session is saved by the time the agent's screen pops. Then pop as in 7.3 to 7.5.
+
 ---
 
 ## 8. Customizing
@@ -337,16 +400,21 @@ To call the Genesys number from your own phone and have Charlotte pop, set `DEMO
 DEMO_PHONES=3175551234=tp-1001
 ```
 
-The format is `yourNumber=taxpayerId`. Separate several mappings with commas:
+Two formats are accepted, and you can mix them, separated by commas:
+
+| Format | Example | Meaning |
+|---|---|---|
+| `yourNumber=taxpayerId` | `3175551234=tp-1001` | Add your number to this taxpayer. Recommended. |
+| `seededNumber:yourNumber` | `4195550124:+13175551234` | Add your number to whichever taxpayer has this demo number (here Tom Harper). |
 
 ```
-DEMO_PHONES=3175551234=tp-1001,3175559876=tp-1002,+1 (317) 555-4321=tp-2001
+DEMO_PHONES=3175551234=tp-1001,3175559876=tp-1002,4195550124:+13175554321
 ```
 
-- The number can be in any format; only the last 10 digits matter. Don't use commas or `=` inside it.
+- Numbers can be in any format; only the last 10 digits matter. Don't use commas, `=` or `:` inside a number.
+- The `seededNumber:` form depends on the brand's area codes, so it stops matching after you switch to a brand with different area codes. On a shared demo number (the Patels' 0131) it picks only the first taxpayer. The `=taxpayerId` form has neither problem.
 - Your number is added to the taxpayer as a primary "Mobile (demo)" phone, and the seeded number still works.
 - Two people can share one number by mapping it to two taxpayers; the pop then shows the picker.
-- Because the mapping uses the taxpayer ID, it keeps working after a brand switch (which changes the seeded area codes).
 - It survives resets and restarts, because it is reapplied every time data is seeded.
 
 Taxpayer IDs:
@@ -362,6 +430,7 @@ Taxpayer IDs:
 | `tp-1007` | Thomas Reed (his CPA, Elena Ruiz, calls from his "Representative" phone) |
 | `tp-1008` | Anika Choudhury |
 | `tp-1009` | Maria Delgado |
+| `tp-1010` | Tom Harper (Pilot scenarios) |
 
 To check it worked, open `https://YOUR-HOST/api/taxpayers/lookup?phone=3175551234&apiKey=YOUR_KEY`. It should return `"found": true` and the taxpayer's name.
 
@@ -430,17 +499,19 @@ Fields on a taxpayer (anything you leave out gets a sensible default):
 | `email`, `address`, `previousAddress`, `schoolDistrict`, `language`, `preferredContact`, `portalEnrolled` | Profile. `language: 'Spanish'` triggers the interpreter recommendation. |
 | `flags` | Badges on the record, e.g. `'Refund on hold'`, `'Balance due'`, `'Response due'`, `'POA on file'`. Several drive recommendations. |
 | `identity` | `{ status: 'Verified' }` by default. Use `{ status: 'Hold', reason: '...' }` to require verification before a refund can be released. |
-| `returns` | Returns, each with an optional `refund` (`amount`, `status`, `method`, `hold`) and `steps`. A refund with `status: 'On hold'` gets the **Release** action. |
+| `returns` | Returns, each with an optional `refund` (`amount`, `status`, `method`, `hold`), an optional `documentation` (`requested`, `received`, `status`) and `steps`. A refund with `status: 'On hold'` gets the **Release** action. |
 | `assessments` | Balances owed: `assessed`, `penalty`, `interest`, `paid`, `balance`, `due`. A positive `balance` enables payments and payment plans. |
 | `payments`, `paymentPlan` | Payment history and an existing plan. |
 | `notices` | Letters: `letter`, `type`, `date`, `status`, `due`, and optionally `amount` and `returnId`. |
 | `bank` | `{ type, last4, bank }` for direct deposit. |
+| `unapplied` | Payments held in suspense: `{ id, amount, method, mailed, received, status: 'Unapplied (suspense)', reason }`. They show under Balances & payments with an **Apply** action and a **Payment found** recommendation. |
+| `demoSsn` | Full 9-digit demo SSN, used only by the `?ssn=&dob=` lookup and never shown or returned. Use a 900-series number so it can't be real. |
 | `representative` | `{ name, firm, phone, form, expires, scope }` for a POA. Add the rep's number to `phones` with type `Representative` so their calls match. |
 | `activities` | History shown on the Activity tab. |
 
 To give a new taxpayer an open case, add an entry to the `cases` list further down (copy one and set `taxpayerId`, a unique `id` and `number`).
 
-**Editing an existing taxpayer**: find their block by name and change the values, for example Charlotte's refund amount (`refund: { amount: 1284.00, ...}`) or her email. Charlotte's scripted transcript in `public/js/ai.js` reads her name, refund amount, tax year and form from the record, but some lines mention specifics (her date of birth, "4471", "Old Mill Road", "Neil Avenue", chatting "four days ago"). If you change those details in `seed.js`, update the matching lines in the `transcript` function in `public/js/ai.js` too. The transcript only runs for `tp-1001`.
+**Editing an existing taxpayer**: find their block by name and change the values, for example Charlotte's refund amount (`refund: { amount: 1284.00, ...}`) or her email. Charlotte's scripted transcript in `public/js/ai.js` reads her name, refund amount, tax year and form from the record, but some lines mention specifics (her date of birth, "4471", "Old Mill Road", "Neil Avenue", chatting "four days ago"). If you change those details in `seed.js`, update the matching lines in the `transcript` function in `public/js/ai.js` too. The transcript only runs for `tp-1001`. Pilot's scripted conversations, including Tom's live transcript after the transfer, are in `lib/scenarios.js`.
 
 **Adding a taxpayer during a demo**: when a pop finds no match, **New contact** creates a taxpayer from the form. It lasts until the next reset.
 
@@ -534,7 +605,7 @@ The server keeps all data in memory and builds it fresh from `lib/seed.js`:
 | **Settings > Reset demo data**, or `POST /api/admin/reset` | Data is reseeded |
 | Brand switch (Settings, `?brand=`) | Data is reseeded with the new brand |
 
-Reseeding brings back the original state, re-dates everything relative to today, and reapplies `DEMO_PHONES`. Anything done in the app since then (payments, released refunds, new contacts, notes) is gone. There is no database, so permanent changes go in `lib/seed.js`.
+Reseeding brings back the original state, re-dates everything relative to today, and reapplies `DEMO_PHONES`. Anything done in the app since then (payments, released refunds, applied suspense payments, Pilot sessions, new contacts, notes) is gone. There is no database, so permanent changes go in `lib/seed.js`.
 
 Browser-side settings (signed-in persona, agent email, ringing, open tabs) are saved in the browser and are not affected by a reset, except that reset closes open tabs.
 
@@ -548,7 +619,8 @@ Browser-side settings (signed-in persona, agent email, ringing, open tabs) are s
 | My data changes disappeared | The service restarted, slept, crossed midnight or was reset. See [section 9](#9-data-resets-and-persistence). |
 | Push pop doesn't appear | The response's `deliveredTo` is 0: the agent email in the request doesn't match Settings in any open browser. Check the Genesys page says **Listening for screen pops**, and match the emails (case doesn't matter). |
 | Pop says "No taxpayer found" | The number isn't on any taxpayer. Check the last 10 digits, or add it with `DEMO_PHONES`. Test with `/api/taxpayers/lookup?phone=...`. |
-| My cell phone doesn't match | Format is `number=taxpayerId` (equals sign, not colon), with no commas inside the number. The service must restart after the change, which Render does automatically. |
+| My cell phone doesn't match | Use `yourNumber=taxpayerId`, or `seededNumber:yourNumber` with the seeded number first. No commas inside a number. The service must restart after the change, which Render does automatically. |
+| No Pilot handoff card after a transfer | The bot session and the screen pop must share the same `conversationId`, and the session must be posted before the pop. Check `GET /api/bot-sessions?conversationId=...`. |
 | Data action returns 401 | The integration's `apiKey` credential doesn't match `API_KEY` in Render. |
 | Data action fails to reach the host | The Request URL Template still points to `snow-mock-ui.onrender.com` but your service has a different URL. |
 | Record is blank inside Genesys | Check `FRAME_ANCESTORS` is `*` or includes your Genesys apps domain. |

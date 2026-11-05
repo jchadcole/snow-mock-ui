@@ -1,0 +1,128 @@
+{
+  "name": "SNOW Tax Mock - Log Virtual Agent Session",
+  "integrationType": "custom-rest-actions",
+  "actionType": "custom",
+  "config": {
+    "request": {
+      "requestUrlTemplate": "https://snow-mock-ui.onrender.com/api/bot-sessions",
+      "requestType": "POST",
+      "headers": {
+        "x-api-key": "${credentials.apiKey}",
+        "Content-Type": "application/json"
+      },
+      "requestTemplate": "{\"conversationId\": \"${input.conversationId}\", \"phone\": \"$!{input.phone}\", \"taxpayerId\": \"$!{input.taxpayerId}\", \"botName\": \"Pilot\", \"intent\": \"$!{input.intent}\", \"taxType\": \"$!{input.taxType}\", \"confidence\": \"$!{input.confidence}\", \"outcome\": \"${input.outcome}\", \"queue\": \"$!{input.queue}\", \"authenticated\": \"$!{input.authenticated}\", \"authMethod\": \"$!{input.authMethod}\", \"summary\": \"$esc.jsonString($!{input.summary})\", \"transcript\": \"$esc.jsonString($!{input.transcript})\", \"slots\": {\"Notice number\": \"$!{input.noticeNumber}\", \"Notice tax year\": \"$!{input.noticeTaxYear}\", \"Amount on notice\": \"$!{input.noticeAmount}\", \"Payment method\": \"$!{input.paymentMethod}\", \"Date mailed\": \"$!{input.paymentDate}\", \"Transfer reason\": \"$!{input.transferReason}\"}}"
+    },
+    "response": {
+      "translationMap": {
+        "botSessionId": "$.id",
+        "taxpayerId": "$.taxpayerId"
+      },
+      "translationMapDefaults": {
+        "botSessionId": "\"\"",
+        "taxpayerId": "\"\""
+      },
+      "successTemplate": "{\"botSessionId\": ${botSessionId}, \"taxpayerId\": ${taxpayerId}}"
+    }
+  },
+  "contract": {
+    "input": {
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "conversationId",
+          "outcome"
+        ],
+        "properties": {
+          "conversationId": {
+            "type": "string",
+            "description": "Conversation.Id; the screen pop for a transfer uses the same ID"
+          },
+          "phone": {
+            "type": "string",
+            "description": "Call.Ani"
+          },
+          "taxpayerId": {
+            "type": "string",
+            "description": "From the lookup data action, if known"
+          },
+          "intent": {
+            "type": "string",
+            "description": "e.g. Refund status"
+          },
+          "taxType": {
+            "type": "string",
+            "description": ""
+          },
+          "confidence": {
+            "type": "string",
+            "description": "0-100"
+          },
+          "outcome": {
+            "type": "string",
+            "description": "Contained or Transferred"
+          },
+          "queue": {
+            "type": "string",
+            "description": ""
+          },
+          "authenticated": {
+            "type": "string",
+            "description": "true/false"
+          },
+          "authMethod": {
+            "type": "string",
+            "description": "e.g. SSN and date of birth (keypad)"
+          },
+          "summary": {
+            "type": "string",
+            "description": "Bot summary for the agent"
+          },
+          "transcript": {
+            "type": "string",
+            "description": "One utterance per line, e.g. 'Pilot: ...' (newline separated)"
+          },
+          "noticeNumber": {
+            "type": "string",
+            "description": ""
+          },
+          "noticeTaxYear": {
+            "type": "string",
+            "description": ""
+          },
+          "noticeAmount": {
+            "type": "string",
+            "description": ""
+          },
+          "paymentMethod": {
+            "type": "string",
+            "description": ""
+          },
+          "paymentDate": {
+            "type": "string",
+            "description": ""
+          },
+          "transferReason": {
+            "type": "string",
+            "description": ""
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "output": {
+      "successSchema": {
+        "type": "object",
+        "properties": {
+          "botSessionId": {
+            "type": "string"
+          },
+          "taxpayerId": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "secure": false
+}
