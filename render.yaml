@@ -1,0 +1,18 @@
+# Render.com blueprint: New > Blueprint, pick the jchadcole/snow-mock-ui repo.
+services:
+  - type: web
+    name: snow-mock-ui
+    runtime: node
+    plan: free
+    buildCommand: echo "no build step"
+    startCommand: node server.js
+    healthCheckPath: /api/health
+    envVars:
+      # Default agency branding (see lib/brands.js). Switchable in Settings at runtime.
+      - key: BRAND
+        value: ohiotax
+      - key: API_KEY
+        generateValue: true
+      # Who may iframe the app. "*" works with every Genesys Cloud region; tighten later if needed.
+      - key: FRAME_ANCESTORS
+        value: "*"

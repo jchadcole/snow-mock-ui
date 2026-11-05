@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Taxpayer Workspace API</title>
+<link rel="icon" href="/img/favicon.svg" type="image/svg+xml">
+<style>
+  :root { --nav: #0c2340; --ink: #1d2327; --muted: #67737a; --line: #d9dee1; --bg: #f4f6f7; --code: #eef1f3; }
+  body { margin: 0; font: 14px/1.55 "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif; color: var(--ink); background: var(--bg); }
+  header { background: var(--nav); color: #fff; padding: 22px 28px; } header h1 { margin: 0; font-size: 22px; font-weight: 600; } header p { margin: 4px 0 0; opacity: .85; }
+  main { max-width: 980px; margin: 0 auto; padding: 18px 20px 60px; }
+  h2 { font-size: 18px; margin: 30px 0 8px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+  .ep { background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 12px 16px; margin: 10px 0; }
+  .ep h3 { margin: 0 0 4px; font-size: 14px; font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .m { display: inline-block; min-width: 52px; text-align: center; border-radius: 3px; padding: 1px 6px; color: #fff; font-size: 12px; margin-right: 6px; }
+  .GET { background: #2f7d4f; } .POST { background: #b4580f; } .PATCH { background: #5b4fa8; }
+  code, pre { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px; background: var(--code); border-radius: 4px; }
+  code { padding: 1px 4px; } pre { padding: 10px 12px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; } td, th { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .lock { color: #b4580f; font-size: 12px; } a { color: #1b5694; }
+</style>
+</head>
+<body>
+<header><h1>Taxpayer Services Workspace API</h1><p>Screen pop, taxpayer lookup and workflow endpoints for Genesys Cloud demos. All data is fictional.</p></header>
+<main>
+  <p>Base URL: <code class="base">https://YOUR-HOST</code>. Endpoints marked <span class="lock">key</span> require <code>x-api-key: &lt;API_KEY&gt;</code> or <code>Authorization: Bearer &lt;API_KEY&gt;</code> when the server has <code>API_KEY</code> set. Phone numbers can be in any format (<code>tel:+16145550184</code>, <code>614-555-0184</code>); the last 10 digits are matched.</p>
+
+  <h2>1. Screen pop by URL</h2>
+  <div class="ep"><h3><span class="m GET">GET</span>/pop?&lt;params&gt;</h3>
+    Opens the workspace, finds the taxpayer and starts an interaction (call card, timer, identity check, outcomes, wrap-up). One match opens the record; several show a picker; none offers a new contact.
+    <table><tr><th>Param</th><th>Meaning</th></tr>
+      <tr><td><code>phone</code> / <code>ani</code></td><td>Caller number</td></tr>
+      <tr><td><code>taxpayerId</code>, <code>returnId</code>, <code>last4</code>, <code>lastName</code></td><td>Exact identifiers (take priority over phone). <code>last4</code> narrows a shared phone.</td></tr>
+      <tr><td><code>conversationId</code> / <code>gcConversationId</code></td><td>Genesys conversation ID, saved with the wrap-up. With Genesys credentials on the server and no phone given, the caller's number is looked up from Genesys.</td></tr>
+      <tr><td><code>queue</code>, <code>direction</code>, <code>mediaType</code>, <code>intent</code></td><td>Shown on the interaction card. <code>intent</code> picks the tab (payment/plan/bill &rarr; Balances, notice/letter &rarr; Notices).</td></tr>
+      <tr><td><code>tab</code></td><td>Force a tab: overview, returns, refunds, balances, notices, cases, identity, activity, profile</td></tr>
+      <tr><td><code>embed=1</code></td><td>Compact layout for an iframe (auto-detected when framed)</td></tr>
+      <tr><td><code>agent</code>, <code>persona</code></td><td>Agent email this browser listens on; persona (agent, business, supervisor) if nobody is signed in</td></tr>
+      <tr><td><code>brand</code></td><td>Reseed with another agency's branding (see <code>lib/brands.js</code>)</td></tr>
+    </table>
+    Unsubstituted template text like <code>{{Call.Ani}}</code> is ignored.
+  </div>
+
+  <h2>2. Screen pop by API (push)</h2>
+  <div class="ep"><h3><span class="m POST">POST</span>/api/screenpop <span class="lock">key</span></h3>
+    Pushes a pop to every open workspace signed in as <code>agent</code> (Server-Sent Events). It rings in the agent's inbox (Accept / Decline) or opens directly, per Settings. <code>"agent": "*"</code> pops on all open browsers.
+    <pre>curl -X POST https://YOUR-HOST/api/screenpop -H "Content-Type: application/json" -H "x-api-key: $API_KEY" \
+  -d '{"phone":"tel:+16145550184","agent":"richie.barnes@tax.ohio.example","conversationId":"c1d2...","queue":"Individual Income Tax","intent":"Refund status"}'</pre>
+    Response: the lookup result below plus <code>screenPopId</code> and <code>deliveredTo</code>.
+  </div>
+  <div class="ep"><h3><span class="m GET">GET</span>/api/screenpop/events?agent=&lt;email&gt;</h3>Server-Sent Events stream (<code>event: screenpop</code>).</div>
+  <div class="ep"><h3><span class="m GET">GET</span>/api/screenpop/recent</h3>Last 50 pops.</div>
+
+  <h2>3. Lookup for IVR, bots and data actions</h2>
+  <div class="ep"><h3><span class="m GET">GET</span>/api/taxpayers/lookup?phone=|last4=|returnId=|accountNumber=|taxpayerId= <span class="lock">key</span></h3>
+    Flat JSON for Genesys data action output contracts. Lets a virtual agent answer "where is my refund" before routing.
+    <pre>{
+  "found": true, "count": 1, "multipleMatches": false,
+  "taxpayerId": "tp-1001", "fullName": "Charlotte Gong", "firstName": "Charlotte", "language": "English",
+  "identityStatus": "Verification required", "refundStatus": "On hold", "refundAmount": 1284, "refundHold": "Identity verification",
+  "balanceDue": 0, "openCaseNumber": "CS0001042", "representative": "",
+  "popUrl": "https://YOUR-HOST/pop?taxpayerId=tp-1001&amp;phone=...",
+  "matches": [ ... ]
+}</pre></div>
+
+  <h2>4. Workflow endpoints</h2>
+  <div class="ep"><h3><span class="m GET">GET</span>/api/taxpayers?q=|phone=|last4=|lastName=|dob=|returnId=|accountNumber=|all=1</h3>Search (summaries).</div>
+  <div class="ep"><h3><span class="m GET">GET</span>/api/taxpayers/{id}</h3>Full record: profile, returns with processing steps, refunds, assessments, payments, payment plan, notices, identity, representative, cases, activity.</div>
+  <div class="ep"><h3><span class="m POST">POST</span>/api/taxpayers &nbsp; <span class="m PATCH">PATCH</span>/api/taxpayers/{id}</h3>New contact (<code>firstName, lastName, dob, last4, phone, email, addressLine, city, zip, language</code>); update <code>address, email, phones, language</code> (address changes keep the previous address).</div>
+  <div class="ep"><h3><span class="m POST">POST</span>/api/taxpayers/{id}/identity</h3>Agent-assisted verification: <code>{"checks": {"Date of birth": true, ...}, "method": "...", "by": "..."}</code>. Any false check returns 400.</div>
+  <div class="ep"><h3><span class="m POST">POST</span>/api/taxpayers/{id}/returns/{returnId}/release</h3>Release a held refund (identity must be verified). Returns the release ID and expected date.</div>
+  <div class="ep"><h3><span class="m PATCH">PATCH</span>/api/taxpayers/{id}/returns/{returnId}/refund</h3>Switch to direct deposit: <code>method, routing (9 digits), account, accountType, bank</code>.</div>
+  <div class="ep"><h3><span class="m POST">POST</span>/api/taxpayers/{id}/payments &nbsp; /api/taxpayers/{id}/payment-plans</h3>Payment: <code>amount, method, assessmentId</code>. Plan: <code>months, downPayment, autopay</code>.</div>
+  <div class="ep"><h3><span class="m POST">POST</span>/api/taxpayers/{id}/notices/{noticeId}/resend &nbsp; <span class="m PATCH">PATCH</span>/api/taxpayers/{id}/notices/{noticeId}</h3>Re-send (<code>method, extendDays</code>) or extend the response due date (<code>extendDays</code>).</div>
+  <div class="ep"><h3><span class="m POST">POST</span>/api/taxpayers/{id}/activities &nbsp; /api/taxpayers/{id}/emails</h3>Log a contact (what wrap-up does): <code>type, direction, subject, text, wrapCode, conversationId, queue, durationSec, caseId, by</code>. Email: <code>subject, body</code>.</div>
+  <div class="ep"><h3><span class="m GET">GET</span>/api/cases?assignedTo=&amp;taxpayerId=&amp;state=open &nbsp; <span class="m POST">POST</span>/api/cases &nbsp; <span class="m PATCH">PATCH</span>/api/cases/{id} &nbsp; <span class="m POST">POST</span>/api/cases/{id}/notes</h3>Cases (CS numbers): create, update state / priority / assignment, resolve, work notes.</div>
+  <div class="ep"><h3><span class="m GET">GET</span>/api/kb?q= &nbsp; /api/kb/{id} &nbsp; /api/interactions &nbsp; /api/users &nbsp; /api/brands &nbsp; /api/config &nbsp; /api/health</h3>Knowledge, logged interactions, reference data, health check.</div>
+  <div class="ep"><h3><span class="m POST">POST</span>/api/admin/reset</h3>Restore demo data, optionally <code>{"brand": "pinecrest"}</code>. Also happens daily and on restart.</div>
+  <div class="ep"><h3><span class="m GET">GET</span>/api/genesys/conversations/{conversationId}</h3>Server-side Genesys lookup of the caller's number, then taxpayer match. Needs <code>GENESYS_CLIENT_ID</code>, <code>GENESYS_CLIENT_SECRET</code>, <code>GENESYS_REGION</code>.</div>
+
+  <h2>Demo callers (Ohio brand)</h2>
+  <table><tr><th>Number</th><th>Taxpayer</th><th>Good for</th></tr>
+    <tr><td>(614) 555-0184</td><td>Charlotte Gong</td><td>Main story: refund on hold for identity verification, quiz letter returned undeliverable. Verify, release, switch to direct deposit, email. Scripted live transcript.</td></tr>
+    <tr><td>(614) 555-0142</td><td>Marcus Johnson</td><td>Balance due from a billing notice: take a payment or set up a payment plan</td></tr>
+    <tr><td>(216) 555-0131</td><td>Raj and Priya Patel</td><td>Shared household phone: two matches, picker</td></tr>
+    <tr><td>(937) 555-0163</td><td>Linda Okafor</td><td>Request for W-2 information due soon: extend the due date</td></tr>
+    <tr><td>(614) 555-0199</td><td>Riverbend Brewing Co. LLC</td><td>Business: delinquent sales tax return and estimated assessment</td></tr>
+    <tr><td>(513) 555-0155</td><td>Elena Ruiz, CPA for Thomas Reed</td><td>Authorized representative calling about an amended return</td></tr>
+    <tr><td>(216) 555-0161</td><td>Anika Choudhury</td><td>Estimated payment still posting</td></tr>
+    <tr><td>(330) 555-0177</td><td>Maria Delgado</td><td>Spanish speaker, refund partly offset to child support</td></tr>
+    <tr><td>any other</td><td>No match</td><td>New contact</td></tr>
+  </table>
+</main>
+<script>document.querySelectorAll('.base').forEach((e) => { e.textContent = location.origin; });</script>
+</body>
+</html>

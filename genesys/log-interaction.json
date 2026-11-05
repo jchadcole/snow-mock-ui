@@ -1,0 +1,74 @@
+{
+  "name": "SNOW Tax Mock - Log Interaction",
+  "integrationType": "custom-rest-actions",
+  "actionType": "custom",
+  "config": {
+    "request": {
+      "requestUrlTemplate": "https://snow-mock-ui.onrender.com/api/taxpayers/${input.taxpayerId}/activities",
+      "requestType": "POST",
+      "headers": {
+        "x-api-key": "${credentials.apiKey}",
+        "Content-Type": "application/json"
+      },
+      "requestTemplate": "{\"type\": \"Phone\", \"direction\": \"$!{input.direction}\", \"subject\": \"$!{input.subject}\", \"text\": \"$!{input.note}\", \"wrapCode\": \"$!{input.wrapCode}\", \"conversationId\": \"$!{input.conversationId}\", \"queue\": \"$!{input.queue}\", \"durationSec\": \"$!{input.durationSec}\", \"by\": \"Genesys Cloud\"}"
+    },
+    "response": {
+      "translationMap": {
+        "activityId": "$.id"
+      },
+      "translationMapDefaults": {
+        "activityId": "\"\""
+      },
+      "successTemplate": "{\"activityId\": ${activityId}}"
+    }
+  },
+  "contract": {
+    "input": {
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "taxpayerId"
+        ],
+        "properties": {
+          "taxpayerId": {
+            "type": "string"
+          },
+          "direction": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "wrapCode": {
+            "type": "string"
+          },
+          "conversationId": {
+            "type": "string"
+          },
+          "queue": {
+            "type": "string"
+          },
+          "durationSec": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "output": {
+      "successSchema": {
+        "type": "object",
+        "properties": {
+          "activityId": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "secure": false
+}

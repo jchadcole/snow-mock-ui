@@ -1,0 +1,123 @@
+{
+  "name": "SNOW Tax Mock - Lookup Taxpayer by Phone",
+  "integrationType": "custom-rest-actions",
+  "actionType": "custom",
+  "config": {
+    "request": {
+      "requestUrlTemplate": "https://snow-mock-ui.onrender.com/api/taxpayers/lookup?phone=$esc.url(${input.phone})",
+      "requestType": "GET",
+      "headers": {
+        "x-api-key": "${credentials.apiKey}"
+      },
+      "requestTemplate": "${input.rawRequest}"
+    },
+    "response": {
+      "translationMap": {
+        "found": "$.found",
+        "count": "$.count",
+        "multipleMatches": "$.multipleMatches",
+        "taxpayerId": "$.taxpayerId",
+        "fullName": "$.fullName",
+        "firstName": "$.firstName",
+        "language": "$.language",
+        "identityStatus": "$.identityStatus",
+        "refundStatus": "$.refundStatus",
+        "refundAmount": "$.refundAmount",
+        "refundHold": "$.refundHold",
+        "balanceDue": "$.balanceDue",
+        "openCaseNumber": "$.openCaseNumber",
+        "representative": "$.representative",
+        "popUrl": "$.popUrl"
+      },
+      "translationMapDefaults": {
+        "found": "false",
+        "count": "0",
+        "multipleMatches": "false",
+        "taxpayerId": "\"\"",
+        "fullName": "\"\"",
+        "firstName": "\"\"",
+        "language": "\"\"",
+        "identityStatus": "\"\"",
+        "refundStatus": "\"\"",
+        "refundAmount": "0",
+        "refundHold": "\"\"",
+        "balanceDue": "0",
+        "openCaseNumber": "\"\"",
+        "representative": "\"\"",
+        "popUrl": "\"\""
+      },
+      "successTemplate": "{\"found\": ${found}, \"count\": ${count}, \"multipleMatches\": ${multipleMatches}, \"taxpayerId\": ${taxpayerId}, \"fullName\": ${fullName}, \"firstName\": ${firstName}, \"language\": ${language}, \"identityStatus\": ${identityStatus}, \"refundStatus\": ${refundStatus}, \"refundAmount\": ${refundAmount}, \"refundHold\": ${refundHold}, \"balanceDue\": ${balanceDue}, \"openCaseNumber\": ${openCaseNumber}, \"representative\": ${representative}, \"popUrl\": ${popUrl}}"
+    }
+  },
+  "contract": {
+    "input": {
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "phone"
+        ],
+        "properties": {
+          "phone": {
+            "type": "string",
+            "description": "Caller ANI, e.g. tel:+16145550184"
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "output": {
+      "successSchema": {
+        "type": "object",
+        "properties": {
+          "found": {
+            "type": "boolean"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "multipleMatches": {
+            "type": "boolean"
+          },
+          "taxpayerId": {
+            "type": "string"
+          },
+          "fullName": {
+            "type": "string"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          },
+          "identityStatus": {
+            "type": "string"
+          },
+          "refundStatus": {
+            "type": "string"
+          },
+          "refundAmount": {
+            "type": "number"
+          },
+          "refundHold": {
+            "type": "string"
+          },
+          "balanceDue": {
+            "type": "number"
+          },
+          "openCaseNumber": {
+            "type": "string"
+          },
+          "representative": {
+            "type": "string"
+          },
+          "popUrl": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "secure": false
+}

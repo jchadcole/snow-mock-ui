@@ -1,0 +1,100 @@
+{
+  "name": "SNOW Tax Mock - Push Screen Pop",
+  "integrationType": "custom-rest-actions",
+  "actionType": "custom",
+  "config": {
+    "request": {
+      "requestUrlTemplate": "https://snow-mock-ui.onrender.com/api/screenpop",
+      "requestType": "POST",
+      "headers": {
+        "x-api-key": "${credentials.apiKey}",
+        "Content-Type": "application/json"
+      },
+      "requestTemplate": "{\"phone\": \"${input.phone}\", \"conversationId\": \"$!{input.conversationId}\", \"agent\": \"${input.agentEmail}\", \"queue\": \"$!{input.queue}\", \"mediaType\": \"$!{input.mediaType}\", \"intent\": \"$!{input.intent}\", \"taxpayerId\": \"$!{input.taxpayerId}\"}"
+    },
+    "response": {
+      "translationMap": {
+        "found": "$.found",
+        "count": "$.count",
+        "taxpayerId": "$.taxpayerId",
+        "fullName": "$.fullName",
+        "popUrl": "$.popUrl",
+        "deliveredTo": "$.deliveredTo"
+      },
+      "translationMapDefaults": {
+        "found": "false",
+        "count": "0",
+        "taxpayerId": "\"\"",
+        "fullName": "\"\"",
+        "popUrl": "\"\"",
+        "deliveredTo": "0"
+      },
+      "successTemplate": "{\"found\": ${found}, \"count\": ${count}, \"taxpayerId\": ${taxpayerId}, \"fullName\": ${fullName}, \"popUrl\": ${popUrl}, \"deliveredTo\": ${deliveredTo}}"
+    }
+  },
+  "contract": {
+    "input": {
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "phone",
+          "agentEmail"
+        ],
+        "properties": {
+          "phone": {
+            "type": "string"
+          },
+          "agentEmail": {
+            "type": "string",
+            "description": "Genesys agent email (Settings > agent email in the workspace)"
+          },
+          "conversationId": {
+            "type": "string"
+          },
+          "queue": {
+            "type": "string"
+          },
+          "mediaType": {
+            "type": "string",
+            "description": "voice | chat | message"
+          },
+          "intent": {
+            "type": "string",
+            "description": "e.g. Refund status"
+          },
+          "taxpayerId": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "output": {
+      "successSchema": {
+        "type": "object",
+        "properties": {
+          "found": {
+            "type": "boolean"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "taxpayerId": {
+            "type": "string"
+          },
+          "fullName": {
+            "type": "string"
+          },
+          "popUrl": {
+            "type": "string"
+          },
+          "deliveredTo": {
+            "type": "integer"
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "secure": false
+}
