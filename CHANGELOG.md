@@ -2,6 +2,12 @@
 
 All notable changes to the SNOW Mock UI. Versions follow [semantic versioning](https://semver.org): MAJOR for a rebuild or breaking change to URLs, APIs or data actions; MINOR for new screens, scenarios or brands; PATCH for fixes. Each release is tagged `vX.Y.Z` in git.
 
+## 3.0.2 (2026-11-05)
+
+### Changed
+- The top left corner shows the ServiceNow wordmark, as in the template. You can change it with `ui.platformLogo` (text or image) in `lib/brands.js`.
+- The agency logo (Ohio by default, still configurable per brand) moved to the left of the search box. It is hidden on screens narrower than 1350 px.
+
 ## 3.0.1 (2026-11-05)
 
 ### Fixed

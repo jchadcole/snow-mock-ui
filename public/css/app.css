@@ -662,3 +662,13 @@ input.fv { border-color: var(--fline); }
 @media (max-width: 1300px) { .ims { grid-template-columns: 280px minmax(340px, 1fr) 300px 40px; } }
 #imsWrap, #imsToast { display: contents; }
 .toasts { top: auto !important; bottom: 34px !important; }
+
+/* v3.0.2: platform wordmark top left, agency logo beside the search box */
+.platformmark { display: flex; align-items: center; height: 46px; padding: 0 14px 0 14px; cursor: pointer; }
+.platformmark img { height: 22px; }
+.pword { color: #fff; font-size: 23px; font-weight: 700; letter-spacing: -0.6px; display: inline-flex; align-items: center; line-height: 1; }
+.pword .po { width: 13px; height: 13px; border-radius: 50%; border: 3px solid #81b5a1; margin: 3px 1px 0; position: relative; }
+.pword .po::after { content: ''; position: absolute; left: 50%; top: -5px; width: 3px; height: 7px; background: #81b5a1; transform: translateX(-50%); border-radius: 2px; box-shadow: 0 0 0 2px var(--nav); }
+.brandmark.wide.top { padding: 0 2px; height: 46px; }
+.brandmark.wide.top img, .brandmark.wide.top .wordmark { height: 30px; }
+@media (max-width: 1350px) { .brandmark.wide.top { display: none; } }

@@ -104,6 +104,13 @@
     const fb = `<span class="wordmark"><b>${esc(L.wordTop || '')}</b><span>${esc(L.wordBottom || '')}</span></span>`;
     return L.image && !window.__logoFail ? `<img src="${esc(L.image)}" alt="${esc(S.brand.agency)}" onerror="window.__logoFail=1;this.outerHTML=this.dataset.fb" data-fb="${esc(fb)}">` : fb;
   }
+  // Platform wordmark at the top left, as in the workspace template. Set brand.ui.platformLogo { text, image } to change it.
+  function platformMark() {
+    const P = Object.assign({ text: 'servicenow', image: '' }, (S.brand.ui && S.brand.ui.platformLogo) || {});
+    if (P.image) return `<img src="${esc(P.image)}" alt="${esc(P.text)}">`;
+    const t = esc(P.text); const i = t.toLowerCase().lastIndexOf('o');
+    return `<span class="pword">${i > 0 ? `${t.slice(0, i)}<span class="po"></span>${t.slice(i + 1)}` : t}</span>`;
+  }
   function shell() {
     const r = parseRoute(); const ix = S.interaction;
     document.body.classList.toggle('embed', S.embed);
@@ -112,10 +119,11 @@
     $('#root').innerHTML = `
     <div id="app">
       <div class="topbar">
-        <div class="brandmark wide" title="${esc(S.brand.agency)}" data-go="#/home" style="cursor:pointer">${brandMark()}</div>
+        <div class="platformmark" title="Home" data-go="#/home">${platformMark()}</div>
         <div class="topnav"><span data-go="#/list/cases" title="All lists">All</span><span data-go="#/kb" title="Knowledge">Favorites</span><span data-go="#/list/interactions" title="Recent interactions">History</span><span data-go="#/home" title="Workspace home">Workspaces</span></div>
         <div class="ws-pill">${esc(S.brand.workspaceName || 'CSM/FSM Configurable Workspace')} <span class="star">${ic('star', 'sm')}</span></div>
         <div class="top-right">
+          <div class="brandmark wide top" title="${esc(S.brand.agency)}">${brandMark()}</div>
           <form class="searchbox v3" id="gsearch">${ic('search', 'sm')}<input id="gq" placeholder="Search" autocomplete="off"><span class="sdrop" data-menu="scope">${ic('down', 'sm')}</span>${S.menu === 'scope' ? `<div class="menu" style="top:30px;right:0">${[['all', 'Taxpayers, cases and returns'], ['kb', 'Knowledge articles']].map(([k, l]) => `<div data-scope="${k}">${(S.scope || 'all') === k ? ic('check', 'sm') : '<span style="width:13px"></span>'}${l}</div>`).join('')}</div>` : ''}</form>
           <button class="iconbtn badged" data-assist title="Now Assist">${ic('chat')}${ix ? '<span class="tb">1</span>' : ''}</button>
           <button class="iconbtn" data-go="#/kb" title="Help and knowledge">${ic('help')}</button>
