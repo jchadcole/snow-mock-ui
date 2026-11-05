@@ -2,6 +2,11 @@
 
 All notable changes to the SNOW Mock UI. Versions follow [semantic versioning](https://semver.org): MAJOR for a rebuild or breaking change to URLs, APIs or data actions; MINOR for new screens, scenarios or brands; PATCH for fixes. Each release is tagged `vX.Y.Z` in git.
 
+## 3.0.1 (2026-11-05)
+
+### Fixed
+- Removed three test screenshots (50-login.png, 51-settings.png, 52-notes.png) that were committed to the repository root by mistake.
+
 ## 3.0.0 (2026-11-05)
 
 The workspace now follows the CSM/FSM Configurable Workspace recording ("snow from Ryan") as its template. Colors, menus, panels, icons and positions match the recording; names, numbers and text come from the brand config and the demo data.
