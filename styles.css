@@ -322,3 +322,8 @@ svg.i.lg { width: 20px; height: 20px; }
 .grid2 .card + .card { margin-top: 0; }
 .rcard .kv .v { white-space: normal; word-break: break-word; }
 .kv .v.wrap { white-space: normal; }
+.brandmark.wide { width: auto; padding: 0 10px 0 8px; }
+.brandmark.wide img { width: auto; height: 28px; background: #fff; border-radius: 4px; padding: 2px 6px; }
+.brandmark .wordmark { background: #fff; border-radius: 4px; height: 28px; display: flex; align-items: center; gap: 6px; padding: 0 8px; color: #0c2340; }
+.brandmark .wordmark b { color: #ba0c2f; font-size: 17px; font-style: italic; font-weight: 900; letter-spacing: -.3px; }
+.brandmark .wordmark span { font-size: 10.5px; font-weight: 700; line-height: 1.05; max-width: 90px; }

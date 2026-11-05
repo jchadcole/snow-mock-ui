@@ -134,6 +134,30 @@ Please show this code to the store staff when you arrive. The ${o.missingItem} w
       ['Meal', '10:00 pm', '(1h)'], ['On Queue', '11:00 pm', '(2h 45m)'], ['Break', '1:45 am', '(15m)'],
       ['On Queue', '2:00 am', '(2h)'], ['Shift End', '4:00 am', '']
     ];
+
+    // ---- UI labels for the retail story (default) ----
+    const nb = B.bonusPoints.toLocaleString();
+    S.ui = {
+      consumerTitle: 'Consumer',
+      metric: { label: 'Points balance', before: c.points.toLocaleString(), after: (c.points + B.bonusPoints).toLocaleString(), star: true },
+      productLabel: 'Product', portal: 'customer help', channelLabel: 'Sales channel', channel: 'Online',
+      orderPill: 'Customer Order', orderLabels: ['Number', 'Customer', 'Status', 'Order Date', 'Inventory Status', 'Product'],
+      statusChat: 'Backorder', statusCallBefore: 'Backorder', statusCallAfter: 'Partially shipped',
+      invPending: 'Backorder', invDone: `Available on ${D.restockLive}`, viewOrder: 'View Order',
+      trChat: { title: 'Check Inventory Status', desc: 'Help the customer with their missing part request.', b1: 'Check Inventory', b2: 'Initiate a Refund' },
+      trCall: { title: 'Initiate pickup or refund request', desc: 'Help the customer with their recent order by initiating a pickup or refund request.', b1: 'Initiate pickup', menu: ['Initiate pickup', 'Check store availability', 'Initiate refund'] },
+      created: { title: 'Initiate pickup request', refLabel: 'Pickup Request', ref: 'PREQ0005467', toast: 'Pickup request PREQ0005467 was created' },
+      nba: {
+        title: `Add ${nb} bonus points`, desc: 'Give as a thoughtful gesture for a loyal customer to boost their loyalty after an inconvenient experience.',
+        btn: 'Add bonus points', donePill: 'Points added', toast: `${nb} bonus points were added to the customer's account.`,
+        histWho: `${nb} bonus points added for <b>${c.name}</b>`, histRef: 'LOY0004418'
+      },
+      category: 'Order issue', subcategory: 'Missing item', intent: 'Missing item', queue: `${co} Customer Care`,
+      kb2: { title: 'Order Shipment policy', number: 'KB0012394', summary: 'Once order is received, it will be shipped in 2-4 business days. Confirmation mail with tracking number is sent to customer via Email & SMS. Sometimes deliveries can be delayed due to unavoidable reasons.' },
+      emailHist: S.email.subject
+    };
+
+    if (B.vertical === 'tax') applyTax(S, B, D);
     return S;
   };
 })();

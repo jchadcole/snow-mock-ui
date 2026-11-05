@@ -125,5 +125,46 @@ window.BRANDS = {
       number: 'KB0020417', title: 'Returns & exchanges',
       summary: 'Items can be returned or exchanged within 60 days of purchase. Store pickup orders are held for 7 days. Refunds are issued to the original payment method within 10 business days.'
     }
+  },
+  // Ohio Department of Taxation look-alike, tax refund story: ?brand=ohiotax
+  ohiotax: {
+    id: 'ohiotax',
+    vertical: 'tax',
+    company: 'Ohio Department of Taxation',
+    supportFrom: 'Ohio Department of Taxation, Taxpayer Services',
+    logo: {
+      text: 'OH',
+      wordmark: 'Ohio Department of Taxation',
+      // Horizontal logo shown in a white badge in the top bar. If it fails to load, a text wordmark is shown.
+      image: 'https://tax.ohio.gov/static/assets/Logo_Assets/Ohio-Agency-Logo-Department-of-Taxation-HORZ-RGB_v2.png',
+      wide: true
+    },
+    theme: {
+      nav: '#0c2340', navText: '#ffffff', accent: '#1b5694', accentSoft: '#e6eef7',
+      highlight: '#ba0c2f', railTop: '#0c2340', railBottom: '#ba0c2f'
+    },
+    agent: { name: 'Richie Barnes', first: 'Richie', initials: 'RB', email: 'richie.barnes@tax.ohio.example' },
+    customer: {
+      name: 'Charlotte Gong', first: 'Charlotte', initials: 'CG',
+      email: 'c.gong@gmail.com', mobile: '+1 614 555 0184', business: '+1 614 555 0127',
+      street: '1452 Neil Ave.', city: 'Columbus, OH', timezone: 'USA / Eastern'
+    },
+    order: {
+      number: 'RTN25081021', title: '2025 Ohio IT 1040 return', shortTitle: '2025 Ohio IT 1040',
+      missingItem: 'refund', restockDays: 4, orderDate: '2026-02-18 09:07:17'
+    },
+    product: { name: '2025 Ohio IT 1040 · RTN25081021', short: '2025 IT 1040' },
+    tax: { refundAmount: '$1,284.00', filedMonth: 'February', releaseRef: 'RRQ0004471', acctLast4: '4417' },
+    secondCustomer: {
+      name: 'Anika Choudhury', first: 'Anika', initials: 'AC', points: 0,
+      email: 'ani.c112@gmail.com', mobile: '+1 216 555 0161', business: '+1 216 555 0102',
+      street: '2210 Lee Rd.', city: 'Cleveland Heights, OH',
+      product: 'Estimated payment', productShort: 'Estimated payment',
+      orderNumber: 'PMT26004418', subject: 'Question about my estimated payment'
+    },
+    kb: {
+      number: 'KB0020415', title: 'Identity Confirmation Quiz',
+      summary: 'When a return is selected for identity review, the department mails an Identity Confirmation Quiz letter. Taxpayers can complete the quiz online or verify by phone with an agent. Once verified, the return continues processing and the refund is typically released within 4 business days.'
+    }
   }
 };

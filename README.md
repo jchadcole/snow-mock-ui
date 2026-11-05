@@ -43,4 +43,14 @@ Every name, color, logo, order, product, store and price comes from `brands.js`.
 
 Example: `?brand=northwind&scene=call`
 
+### Built-in brands
+
+| `?brand=` | Brand | Story |
+| --- | --- | --- |
+| `haven` (default) | Haven & Hill (furniture retailer) | Missing ottoman, store pickup, bonus points |
+| `northwind` | Northwind Outdoors (sample) | Same retail story, different names and colors |
+| `ohiotax` | Ohio Department of Taxation | Refund held for identity verification, agent verifies by phone, releases the refund, switches it to direct deposit |
+
+A brand with `vertical: 'tax'` uses the tax-agency story in `tax.js` instead of the retail one. Any brand can be copied and edited, and old brands keep working.
+
 This is an original mock built for demos. It is not affiliated with ServiceNow or Genesys, and it does not use their code or assets.

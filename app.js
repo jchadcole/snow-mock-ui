@@ -6,6 +6,7 @@
   const S = window.buildScenario(BRAND_ID);
   const B = S.brand;
   const C = B.customer, A = B.agent, O = B.order, P = B.product, S2 = B.secondCustomer;
+  const U = S.ui, TAX = B.vertical === 'tax';
 
   // ---------- theme ----------
   const root = document.documentElement.style;
@@ -78,7 +79,7 @@
   const esc = s => String(s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
 
   const CUST = {
-    c: { ...C, subject: 'Missing item in my recent order', product: P.name, productShort: P.short, orderNumber: O.number },
+    c: { ...C, subject: TAX ? 'Where is my income tax refund' : 'Missing item in my recent order', product: P.name, productShort: P.short, orderNumber: O.number },
     s2: { ...S2, language: 'En', device: 'Mobile', timezone: 'USA / Texas' }
   };
 
@@ -240,10 +241,11 @@
 
   // ---------- render helpers ----------
   function topbar() {
-    const logo = B.logo.image ? `<img src="${esc(B.logo.image)}" alt="">` : `<div class="mark">${esc(B.logo.text)}</div>`;
+    const fallback = B.logo.wide ? `<span class="wordmark"><b>${esc(B.logo.wordmark.split(' ')[0])}</b><span>${esc(B.logo.wordmark.split(' ').slice(1).join(' '))}</span></span>` : `<div class="mark">${esc(B.logo.text)}</div>`;
+    const logo = B.logo.image && !window.__logoFail ? `<img src="${esc(B.logo.image)}" alt="${esc(B.logo.wordmark)}" onerror="window.__logoFail=1;this.outerHTML=this.dataset.fb" data-fb="${esc(fallback)}">` : fallback;
     const dotColor = { Available: '#2e9e4f', Away: '#f0a400', Offline: '#9aa6ad', Busy: '#c3243a' }[st.presence];
     return `<div class="topbar">
-      <div class="brandmark" title="${esc(B.logo.wordmark)}">${logo}</div>
+      <div class="brandmark ${B.logo.wide ? 'wide' : ''}" title="${esc(B.logo.wordmark)}">${logo}</div>
       <div class="topnav"><span>All</span><span>Favorites</span><span>History</span><span>Workspaces</span><span>Studio</span><span>${ic('dotsh', 'sm')}</span></div>
       <div class="ws-pill">${esc(B.workspaceName)} <span class="star">${ic('star', 'sm')}</span></div>
       <div class="top-right">
@@ -305,11 +307,12 @@
 
   // ---------- consumer card ----------
   function consumerCard(who, wide) {
-    const cu = CUST[who]; const pts = who === 'c' ? st.points : cu.points;
-    return `<div class="card"><div class="card-h">Consumer<span class="r">${ic('pencil', 'sm')}${ic('dots', 'sm')}</span></div>
+    const cu = CUST[who];
+    const metric = who === 'c' ? (st.metricDone ? U.metric.after : U.metric.before) : (TAX ? 'Paper check' : (cu.points || 0).toLocaleString());
+    return `<div class="card"><div class="card-h">${U.consumerTitle}<span class="r">${ic('pencil', 'sm')}${ic('dots', 'sm')}</span></div>
       <div class="person">${avatar(cu.initials, 'lg', cu.name)}<span class="link" style="font-size:14px">${esc(cu.name)}</span></div>
       <div class="kv ${wide ? 'c3' : 'c3'}">
-        <div><label>Points balance</label><div class="v pts ${who === 'c' && st.bump ? 'bump' : ''}">${pts.toLocaleString()} <span class="star">${ic('star', 'sm')}</span></div></div>
+        <div><label>${U.metric.label}</label><div class="v pts ${who === 'c' && st.bump ? 'bump' : ''}">${esc(metric)} ${U.metric.star ? `<span class="star">${ic('star', 'sm')}</span>` : ''}</div></div>
         <div><label>Email</label><div class="v link">${esc(cu.email)}</div></div>
         <div><label>Mobile phone</label><div class="v link">${esc(cu.mobile)}</div></div>
         <div><label>Business phone</label><div class="v link">${esc(cu.business)}</div></div>
@@ -321,11 +324,11 @@
     const cu = CUST[ix.who];
     return `<div class="card"><div class="card-h">Interaction information ${ic('info', 'sm')}</div>
       <div class="kv c3">
-        <div><label>Product</label><div class="v link" data-act="openProduct" data-id="${ix.id}">${esc(cu.productShort)}</div></div>
+        <div><label>${U.productLabel}</label><div class="v link" data-act="openProduct" data-id="${ix.id}">${esc(cu.productShort)}</div></div>
         <div><label>Device type</label><div class="v">${cu.device || 'Mobile'}</div></div>
         <div><label>Language</label><div class="v">${cu.language || 'En'}</div></div>
-        <div><label>Portal</label><div class="v">customer help</div></div>
-        <div><label>Sales channel</label><div class="v">Online</div></div>
+        <div><label>Portal</label><div class="v">${U.portal}</div></div>
+        <div><label>${U.channelLabel}</label><div class="v">${U.channel}</div></div>
         <div><label>Type</label><div class="v">Chat</div></div>
       </div></div>`;
   }
@@ -348,15 +351,15 @@
           <div><label>Device type</label><div class="v">${cu.device || 'Mobile'}</div></div>
           <div><label>Language</label><div class="v">${cu.language || 'En'}</div></div>
           <div><label>Callers time zone</label><div class="v">${cu.timezone || ''}</div></div>
-          <div><label>Sales channel</label><div class="v">Online</div></div>
+          <div><label>${U.channelLabel}</label><div class="v">${U.channel}</div></div>
           <div><label>Type</label><div class="v">${isCall ? 'Call' : 'Chat'}</div></div>
           ${isCall ? `<div><label>Call type</label><div class="v">Inbound</div></div><div><label>Call started</label><div class="v wrap">${S.dates.today} ${new Date(ix.start).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</div></div><div></div>` : ''}
           <div class="check" style="grid-column:1/-1;margin-top:4px"><span class="box">${ic('check', 'sm')}</span> Verified</div>
         </div>
         <div style="display:grid;gap:8px">
           <div class="fld"><label>State</label><div class="in">${wrap && ix.saved ? 'Closed complete' : 'Work in progress'} ${ic('attach', 'sm')}</div></div>
-          <div class="fld"><label>Category</label><div class="in">${wrap ? 'Order issue' : '-- None --'} ${ic('attach', 'sm')}</div></div>
-          <div class="fld"><label>Subcategory</label><div class="in">${wrap ? 'Missing item' : '-- None --'} ${ic('attach', 'sm')}</div></div>
+          <div class="fld"><label>Category</label><div class="in">${wrap ? U.category : '-- None --'} ${ic('attach', 'sm')}</div></div>
+          <div class="fld"><label>Subcategory</label><div class="in">${wrap ? U.subcategory : '-- None --'} ${ic('attach', 'sm')}</div></div>
           <div class="fld"><label>Assigned to</label><div class="in">${esc(A.name)} <span style="display:flex;gap:6px;color:var(--muted)">${ic('info', 'sm')}${ic('search', 'sm')}</span></div></div>
         </div>
         <div class="fld full"><label>Short description</label><div class="in">${esc(ix.subject)}</div></div>
@@ -368,11 +371,11 @@
     return `<div class="card"><div class="card-h">${ic('route', 'sm')} Routing &amp; journey <span class="r" style="font-weight:400;font-size:11px">Genesys Cloud</span></div>
       <div class="kv c3">
         <div><label>Routing method</label><div class="v">Predictive routing</div></div>
-        <div><label>Queue</label><div class="v">${esc(B.company)} Customer Care</div></div>
+        <div><label>Queue</label><div class="v">${esc(U.queue)}</div></div>
         <div><label>Agent match score</label><div class="v">94 / 100</div></div>
         <div><label>Channel</label><div class="v">${isCall ? 'Voice' : 'Web messaging'}</div></div>
         <div><label>Time in queue</label><div class="v">${isCall ? '0:18' : '0:42'}</div></div>
-        <div><label>Self-service</label><div class="v">${isCall ? 'Virtual agent · intent: Missing item' : 'Virtual agent · Chat with Live Agent'}</div></div>
+        <div><label>Self-service</label><div class="v">${isCall ? `Virtual agent · intent: ${U.intent}` : 'Virtual agent · Chat with Live Agent'}</div></div>
       </div></div>`;
   }
 
@@ -381,19 +384,20 @@
     return `<div class="rec-h"><h4>Recommendations</h4>${ic('refresh', 'sm')}</div><div class="rec-tabs"><span class="on">Suggested actions (${n})</span><span>Search</span></div>`;
   }
   function orderCard(ix, status) {
-    return `<div class="rcard"><span class="pill blue">${ic('box', 'sm')} Customer Order</span><span style="float:right">${ic('dots', 'sm')}</span>
+    const L = U.orderLabels;
+    return `<div class="rcard"><span class="pill blue">${ic('box', 'sm')} ${U.orderPill}</span><span style="float:right">${ic('dots', 'sm')}</span>
       <h5>${esc(O.title)}</h5>
-      <div class="kv c3"><div><label>Number</label><div class="v link">${O.number}</div></div><div><label>Customer</label><div class="v link">${esc(C.name)}</div></div><div><label>Status</label><div class="v link">${status}</div></div>
-      ${ix.type === 'call' ? `<div style="grid-column:1/-1"><label>Product</label><div class="v link" data-act="openProduct" data-id="${ix.id}">${esc(P.name)}</div></div>` : `<div><label>Order Date</label><div class="v">${O.orderDate.slice(0, 10)}</div></div><div style="grid-column:span 2"><label>Inventory Status</label><div class="v">${ix.gates.inventoryChecked ? `Available on ${S.dates.restockLive}` : 'Backorder'}</div></div>`}</div>
-      <div class="rbtns"><button class="btn">Dismiss</button><button class="btn" data-act="openProduct" data-id="${ix.id}">View Order</button></div></div>`;
+      <div class="kv c3"><div><label>${L[0]}</label><div class="v link">${O.number}</div></div><div><label>${L[1]}</label><div class="v link">${esc(C.name)}</div></div><div><label>${L[2]}</label><div class="v link">${status}</div></div>
+      ${ix.type === 'call' ? `<div style="grid-column:1/-1"><label>${L[5]}</label><div class="v link" data-act="openProduct" data-id="${ix.id}">${esc(TAX ? B.tax.refundAmount + ' · ' + (st.metricDone ? 'Direct deposit' : 'Paper check') : P.name)}</div></div>` : `<div><label>${L[3]}</label><div class="v">${O.orderDate.slice(0, 10)}</div></div><div style="grid-column:span 2"><label>${L[4]}</label><div class="v">${ix.gates.inventoryChecked ? U.invDone : U.invPending}</div></div>`}</div>
+      <div class="rbtns"><button class="btn">Dismiss</button><button class="btn" data-act="openProduct" data-id="${ix.id}">${U.viewOrder}</button></div></div>`;
   }
   function kbCard(sendable, ix) {
     const isC = !ix || ix.who === 'c';
-    const title = isC ? B.kb.title : 'Order Shipment policy';
-    const sum = isC ? B.kb.summary : 'Once order is received, it will be shipped in 2-4 business days. Confirmation mail with tracking number is sent to customer via Email & SMS. Sometimes deliveries can be delayed due to unavoidable reasons.';
+    const title = isC ? B.kb.title : U.kb2.title;
+    const sum = isC ? B.kb.summary : U.kb2.summary;
     return `<div class="rcard"><span class="pill purple">${ic('spark', 'sm')} Now Assist Q&amp;A</span><span style="float:right">${ic('dots', 'sm')}</span>
       <h5>${title}</h5>
-      <div class="kv c3"><div><label>Number</label><div class="v link">${isC ? B.kb.number : 'KB0012394'}</div></div><div><label>Author</label><div class="v link">Administrator</div></div><div><label>Updated</label><div class="v">2025-08-13</div></div></div>
+      <div class="kv c3"><div><label>Number</label><div class="v link">${isC ? B.kb.number : U.kb2.number}</div></div><div><label>Author</label><div class="v link">Administrator</div></div><div><label>Updated</label><div class="v">2025-08-13</div></div></div>
       <div class="aisum"><div class="t">${ic('spark', 'sm')} Summarized by Now Assist ${ic('info', 'sm')}</div>${esc(sum)}<div class="fb">${ic('up', 'sm')}${ic('dn', 'sm')}${ic('copy', 'sm')}${ic('refresh', 'sm')}</div></div>
       <div class="disclaim">Be sure to check AI-generated summaries for accuracy.</div>
       <div class="rbtns"><button class="btn">Dismiss</button><button class="btn" ${sendable ? `data-act="sendKb" data-id="${ix.id}"` : ''}>Send in Chat</button></div></div>`;
@@ -401,15 +405,32 @@
   function chatRecs(ix) {
     const isC = ix.who === 'c';
     const prod = isC ? O.title : S2.product;
-    return recHeader(3) + `<div class="rcard"><span class="pill">${ic('wrench', 'sm')} Troubleshoot</span><h5>Check Inventory Status</h5><p>Help the customer with their missing part request.</p>
-      <div class="rbtns"><button class="btn" data-act="openProduct" data-id="${ix.id}">Check Inventory</button><button class="btn">Initiate a Refund</button></div></div>`
-      + (isC ? orderCard(ix, 'Backorder') : `<div class="rcard"><span class="pill blue">${ic('box', 'sm')} Customer Order</span><h5 class="link">${esc(prod)}</h5><div class="kv c3"><div><label>Number</label><div class="v link">${S2.orderNumber}</div></div><div><label>Customer</label><div class="v link">${esc(S2.name)}</div></div><div><label>Status</label><div class="v link">In-transit</div></div></div><div class="rbtns"><button class="btn">Dismiss</button><button class="btn">View Order</button></div></div>`)
+    const L = U.orderLabels;
+    return recHeader(3) + `<div class="rcard"><span class="pill">${ic('wrench', 'sm')} Troubleshoot</span><h5>${U.trChat.title}</h5><p>${U.trChat.desc}</p>
+      <div class="rbtns"><button class="btn" data-act="openProduct" data-id="${ix.id}">${U.trChat.b1}</button><button class="btn">${U.trChat.b2}</button></div></div>`
+      + (isC ? orderCard(ix, U.statusChat) : `<div class="rcard"><span class="pill blue">${ic('box', 'sm')} ${TAX ? 'Payment' : U.orderPill}</span><h5 class="link">${esc(prod)}</h5><div class="kv c3"><div><label>${L[0]}</label><div class="v link">${S2.orderNumber}</div></div><div><label>${L[1]}</label><div class="v link">${esc(S2.name)}</div></div><div><label>${L[2]}</label><div class="v link">${TAX ? 'Posting' : 'In-transit'}</div></div></div><div class="rbtns"><button class="btn">Dismiss</button><button class="btn">${U.viewOrder}</button></div></div>`)
       + kbCard(!ix.ended, ix);
   }
-  function callRecs(ix) {
+  function pickupForm(ix) {
     const pu = ix.pickup; const store = B.stores[pu.store];
-    if (ix.rec === 'pickup') {
-      const body = pu.step === 1 ? `
+    if (TAX) {
+      const methods = ['Agent-assisted verification by phone', 'Identity Confirmation Quiz code', 'In-person at a district office'];
+      return pu.step === 1 ? `
+        <div class="fld"><label>Taxpayer</label><input class="in" value="${esc(C.name)}" readonly></div>
+        <div class="fld"><label>Return</label><input class="in" value="${O.number} · ${esc(O.shortTitle)}" readonly></div>
+        <div class="fld"><label>Verification method</label><select class="in">${methods.map(m => `<option>${m}</option>`).join('')}</select></div>
+        <div class="fld"><label>Identity checks</label>${['Last 4 of SSN', 'Prior-year Ohio AGI', 'Date of birth'].map(x => `<div class="check" style="margin:4px 0;font-size:12px"><span class="box">${ic('check', 'sm')}</span> ${x} matched</div>`).join('')}</div>
+        <div class="fld"><label>Updated mailing address</label><input class="in" value="${esc(C.street)}, ${esc(C.city)}"></div>
+        <div class="rbtns" style="justify-content:flex-end"><button class="btn primary" data-act="pickupNext" style="flex:0 0 auto">Next</button></div>`
+        : `<div class="kv" style="font-size:11.5px">
+          <div><label>Taxpayer</label><div class="v">${esc(C.name)}</div></div>
+          <div><label>Return</label><div class="v">${O.number}</div></div>
+          <div><label>Identity</label><div class="v">Verified by agent</div></div>
+          <div><label>Refund to release</label><div class="v">${B.tax.refundAmount}</div></div>
+          <div><label>Hold</label><div class="v">ID verification hold will be removed</div></div></div>
+          <div class="rbtns"><button class="btn" data-act="pickupBack">Back</button><button class="btn primary" data-act="pickupCreate">Release refund</button></div>`;
+    }
+    return pu.step === 1 ? `
         <div class="fld"><label>Customer</label><input class="in" value="${esc(C.name)}" readonly></div>
         <div class="fld"><label>Order number</label><input class="in" value="${O.number}" readonly></div>
         <div class="fld"><label>Store location</label><select class="in" data-act-change="store">${B.stores.map((s, i) => `<option value="${i}" ${i === pu.store ? 'selected' : ''}>${esc(s.address)}</option>`).join('')}</select></div>
@@ -422,32 +443,43 @@
           <div><label>Date/Time</label><div class="v">${esc(pu.date)} ${esc(pu.time)}</div></div>
           <div><label>Pickup PIN</label><div class="v">${B.pickup.pin}</div></div></div>
           <div class="rbtns"><button class="btn" data-act="pickupBack">Back</button><button class="btn primary" data-act="pickupCreate">Create request</button></div>`;
-      return `<div class="back" data-act="recBack">${ic('left', 'sm')} Back</div><div class="rcard rform"><h5>Initiate pickup request</h5><p style="margin-bottom:10px">Step ${pu.step} of 2</p>${body}</div>`;
+  }
+  function callRecs(ix) {
+    const pu = ix.pickup; const store = B.stores[pu.store];
+    if (ix.rec === 'pickup') {
+      return `<div class="back" data-act="recBack">${ic('left', 'sm')} Back</div><div class="rcard rform"><h5>${U.created.title}</h5><p style="margin-bottom:10px">Step ${pu.step} of 2</p>${pickupForm(ix)}</div>`;
     }
     let out = '';
     let n = 0;
     if (pu.created) {
-      out += `<div class="rcard"><span class="pill ok">${ic('check', 'sm')} Request created</span><h5>Initiate pickup request</h5><p>This guidance has been completed with the following outputs</p>
-        <div class="kv"><div><label>Pickup Request</label><div class="v link">PREQ0005467</div></div></div>
+      const inputs = TAX
+        ? `<div><label>Verification</label><div class="v">Agent-assisted by phone</div></div><div><label>Refund</label><div class="v">${B.tax.refundAmount}</div></div><div><label>Address</label><div class="v" style="white-space:normal">${esc(C.street)}, ${esc(C.city)}</div></div>`
+        : `<div><label>Store</label><div class="v" style="white-space:normal">${esc(store.address)}</div></div><div><label>Date/Time</label><div class="v">${esc(pu.date)} ${esc(pu.time)}</div></div><div><label>PIN</label><div class="v">${B.pickup.pin}</div></div>`;
+      out += `<div class="rcard"><span class="pill ok">${ic('check', 'sm')} Request created</span><h5>${U.created.title}</h5><p>This guidance has been completed with the following outputs</p>
+        <div class="kv"><div><label>${U.created.refLabel}</label><div class="v link">${U.created.ref}</div></div></div>
         <div class="back" data-act="togglePu" style="margin:0">${ic(pu.open ? 'down' : 'arrow', 'sm')} Inputs provided</div>
-        ${pu.open ? `<div class="kv" style="margin-top:6px"><div><label>Store</label><div class="v" style="white-space:normal">${esc(store.address)}</div></div><div><label>Date/Time</label><div class="v">${esc(pu.date)} ${esc(pu.time)}</div></div><div><label>PIN</label><div class="v">${B.pickup.pin}</div></div></div>` : ''}</div>`;
+        ${pu.open ? `<div class="kv" style="margin-top:6px">${inputs}</div>` : ''}</div>`;
     } else {
       n++;
-      const menu = st.menu === 'pickup' ? `<div class="menu"><div data-act="startPickup">${ic('store', 'sm')} Initiate pickup</div><div data-act="openProduct" data-id="call1">${ic('search', 'sm')} Check store availability</div><div>${ic('refresh', 'sm')} Initiate refund</div></div>` : '';
-      out += `<div class="rcard"><span class="pill">${ic('wrench', 'sm')} Troubleshoot</span><h5>Initiate pickup or refund request</h5><p>Help the customer with their recent order by initiating a pickup or refund request.</p>
-        <div class="rbtns"><button class="btn">Dismiss</button><div class="dropdown splitbtn" style="flex:1.4"><button class="btn" data-act="startPickup" style="flex:1">Initiate pickup</button><button class="btn" data-act="menu" data-id="pickup">${ic('down', 'sm')}</button>${menu}</div></div></div>`;
+      const m = U.trCall.menu;
+      const menu = st.menu === 'pickup' ? `<div class="menu"><div data-act="startPickup">${ic(TAX ? 'user' : 'store', 'sm')} ${m[0]}</div><div data-act="openProduct" data-id="call1">${ic('search', 'sm')} ${m[1]}</div><div>${ic('refresh', 'sm')} ${m[2]}</div></div>` : '';
+      out += `<div class="rcard"><span class="pill">${ic('wrench', 'sm')} Troubleshoot</span><h5>${U.trCall.title}</h5><p>${U.trCall.desc}</p>
+        <div class="rbtns"><button class="btn">Dismiss</button><div class="dropdown splitbtn" style="flex:1.4"><button class="btn" data-act="startPickup" style="flex:1">${U.trCall.b1}</button><button class="btn" data-act="menu" data-id="pickup">${ic('down', 'sm')}</button>${menu}</div></div></div>`;
     }
     if (pu.created && !ix.pointsAdded && !ix.nbaDismissed) {
       n++;
-      out += `<div class="rcard"><span class="pill purple">${ic('spark', 'sm')} Next best action</span><h5>Add ${B.bonusPoints.toLocaleString()} bonus points</h5><p>Give as a thoughtful gesture for a loyal customer to boost their loyalty after an inconvenient experience.</p>
-        <div class="rbtns"><button class="btn" data-act="nbaDismiss">Dismiss</button><button class="btn primary" data-act="addPoints">Add bonus points</button></div></div>`;
+      out += `<div class="rcard"><span class="pill purple">${ic('spark', 'sm')} Next best action</span><h5>${U.nba.title}</h5><p>${U.nba.desc}</p>
+        <div class="rbtns"><button class="btn" data-act="nbaDismiss">Dismiss</button><button class="btn primary" data-act="addPoints">${U.nba.btn}</button></div></div>`;
     }
     if (ix.pointsAdded) {
-      out += `<div class="rcard"><span class="pill ok">${ic('check', 'sm')} Points added</span><h5>Add ${B.bonusPoints.toLocaleString()} bonus points</h5><p>This guidance has been completed with the following updates</p>
-        <div class="kv"><div><label>Points added</label><div class="v">${B.bonusPoints.toLocaleString()}</div></div><div><label>Total points balance</label><div class="v">${st.points.toLocaleString()}</div></div></div>
+      out += TAX
+        ? `<div class="rcard"><span class="pill ok">${ic('check', 'sm')} ${U.nba.donePill}</span><h5>${U.nba.title}</h5><p>This guidance has been completed with the following updates</p>
+          <div class="kv"><div><label>Refund method</label><div class="v">Direct deposit</div></div><div><label>Account</label><div class="v">Checking ••••${B.tax.acctLast4}</div></div><div><label>Refund amount</label><div class="v">${B.tax.refundAmount}</div></div><div><label>Expected deposit</label><div class="v">5-7 business days</div></div></div></div>`
+        : `<div class="rcard"><span class="pill ok">${ic('check', 'sm')} ${U.nba.donePill}</span><h5>${U.nba.title}</h5><p>This guidance has been completed with the following updates</p>
+        <div class="kv"><div><label>Points added</label><div class="v">${B.bonusPoints.toLocaleString()}</div></div><div><label>Total points balance</label><div class="v">${U.metric.after}</div></div></div>
         <div class="ptsh"><b style="font-size:11px">${ic('down', 'sm')} Points history</b>${st.pointsHistory.map(h => `<div><span>${h.date}</span><span>${ic(h.label === 'Reward' ? 'gift' : 'cart', 'sm')} ${h.label}</span><span class="amt">${h.pts}</span></div>`).join('')}</div></div>`;
     }
-    if (!pu.created) { n++; out += orderCard(ix, ix.gates.storesChecked ? 'Partially shipped' : 'Backorder'); }
+    if (!pu.created) { n++; out += orderCard(ix, ix.gates.storesChecked ? U.statusCallAfter : U.statusCallBefore); }
     return recHeader(n) + out;
   }
 
@@ -478,6 +510,50 @@
         <div style="color:var(--muted);font-size:11px;margin:-4px 0 8px">Last refreshed 1m ago</div>
         <table class="tbl"><thead><tr><th><span class="cb"></span></th><th>Color</th><th>Quantity ${ic('down', 'sm')}</th><th>Price</th><th>Available for pickup</th><th>Available online</th></tr></thead><tbody>${rows}</tbody></table>
         <div style="display:flex;justify-content:space-between;color:var(--muted);margin-top:10px;font-size:12px"><span>Showing 1-${B.stores.length} of ${B.stores.length}</span><span>10 ${ic('down', 'sm')} Records per page</span></div>
+      </div></div>`;
+  }
+
+  // ---------- tax return record (tax vertical) ----------
+  function taxRecordView(ix) {
+    const isCall = ix.type === 'call';
+    const released = isCall && ix.pickup.created;
+    const tx = B.tax;
+    const steps = [
+      ['Return received', 'Complete', `${O.orderDate.slice(0, 10)}`, 'ok'],
+      ['Return processed', 'Complete', `${O.orderDate.slice(0, 8)}27`, 'ok'],
+      ['Identity verification', released ? 'Verified by agent' : 'Pending', released ? S.dates.todayIso : '-', released ? 'ok' : 'warn'],
+      ['Identity Confirmation Quiz letter', isCall ? 'Returned undeliverable' : 'Mailed', isCall ? S.dates.todayIso : S.dates.todayIso, isCall && !released ? 'bad' : 'ok'],
+      ['Refund approved', released ? 'Complete' : 'On hold', released ? S.dates.todayIso : '-', released ? 'ok' : 'warn'],
+      ['Refund issued', released ? 'Scheduled' : 'Not started', '-', released ? 'ok' : 'muted']
+    ];
+    const color = { ok: 'var(--ok)', warn: '#a86a00', bad: 'var(--danger)', muted: 'var(--muted)' };
+    const banner = released
+      ? `<div class="banner ok">${ic('check')} Identity verified. Refund of <b>${tx.refundAmount}</b> released (${tx.releaseRef}).</div>`
+      : isCall
+        ? `<div class="banner">${ic('info')} Identity Confirmation Quiz letter was returned undeliverable. Agent-assisted verification by phone is available.</div>`
+        : `<div class="banner">${ic('info')} Refund on hold: identity verification required. An Identity Confirmation Quiz letter was mailed to the taxpayer.</div>`;
+    if (!isCall) ix.gates.inventoryChecked = true;
+    return `<div class="prod">
+      <div class="ptabs"><div data-act="closeProduct" data-id="${ix.id}" style="cursor:pointer">Details ${ic('x', 'sm')}</div><div class="on">${esc(P.short)} ${ic('x', 'sm')}</div></div>
+      <div class="c-head" style="border-top:1px solid var(--line)"><h2 style="font-size:17px">${esc(O.title)}</h2><span class="tag">${ic('tag', 'sm')}</span>
+        <div class="acts"><button class="btn sm">Resend notice</button><button class="btn sm">Add note</button><button class="btn sm" data-act="closeProduct" data-id="${ix.id}">Save</button><button class="btn sm icon">${ic('dots', 'sm')}</button></div></div>
+      <div class="sub2"><div>Details</div><div class="on">Processing status</div><div>Notices (2)</div><div>Payments</div><div>Documents</div><div>More ${ic('down', 'sm')}</div></div>
+      ${banner}
+      <div class="c-body" style="background:#fff">
+        <div class="card" style="margin-bottom:12px"><div class="kv c4">
+          <div><label>Return ID</label><div class="v link">${O.number}</div></div>
+          <div><label>Taxpayer</label><div class="v link">${esc(C.name)}</div></div>
+          <div><label>Filing method</label><div class="v">e-File · OH|TAX eServices</div></div>
+          <div><label>Filed</label><div class="v">${O.orderDate.slice(0, 10)}</div></div>
+          <div><label>Refund requested</label><div class="v">${tx.refundAmount}</div></div>
+          <div><label>Refund method</label><div class="v">${st.metricDone ? 'Direct deposit ••••' + tx.acctLast4 : 'Paper check'}</div></div>
+          <div><label>Mailing address</label><div class="v">${released ? esc(C.street) + ', ' + esc(C.city) : '310 Old Mill Rd., Columbus, OH'}</div></div>
+          <div><label>Hold reason</label><div class="v">${released ? 'None' : 'Identity verification'}</div></div>
+        </div></div>
+        <div class="card-h" style="font-size:16px">Processing status</div>
+        <table class="tbl"><thead><tr><th>Step</th><th>Status</th><th>Updated</th></tr></thead><tbody>
+          ${steps.map(r => `<tr><td>${r[0]}</td><td style="color:${color[r[3]]};font-weight:700">${r[1]}</td><td>${r[2]}</td></tr>`).join('')}
+        </tbody></table>
       </div></div>`;
   }
 
@@ -537,7 +613,7 @@
     const left = isCall ? callColumn(ix) : chatColumn(ix);
     const xcol = `<div class="colX"><span class="on">${ic('spark', 'sm')}</span>${ic('book', 'sm')}${ic('clip', 'sm')}${ic('attach', 'sm')}</div>`;
     if (ix.center === 'product') {
-      return `<div class="ix" style="grid-template-columns:268px 1fr 28px">${left}${productView(ix)}${xcol}</div>`;
+      return `<div class="ix" style="grid-template-columns:268px 1fr 28px">${left}${TAX ? taxRecordView(ix) : productView(ix)}${xcol}</div>`;
     }
     let body;
     if (ix.subtab === 'details') body = detailsForm(ix) + routingCard(ix);
@@ -650,16 +726,17 @@
     pickupBack: () => { curIx().pickup.step = 1; },
     pickupCreate: () => {
       const ix = curIx(); ix.pickup.created = true; ix.rec = 'list';
-      addHistory({ icon: 'store', who: `Pickup request created for <b>${C.name}</b>`, ref: 'PREQ0005467', text: `${B.stores[ix.pickup.store].address} · ${ix.pickup.date} ${ix.pickup.time}` });
-      toast('Pickup request PREQ0005467 was created'); return 'norender';
+      if (TAX) addHistory({ icon: 'user', who: `Identity verified and refund released for <b>${C.name}</b>`, ref: U.created.ref, text: `${B.tax.refundAmount} · ${O.title}` });
+      else addHistory({ icon: 'store', who: `Pickup request created for <b>${C.name}</b>`, ref: U.created.ref, text: `${B.stores[ix.pickup.store].address} · ${ix.pickup.date} ${ix.pickup.time}` });
+      toast(U.created.toast); return 'norender';
     },
     togglePu: () => { const p = curIx().pickup; p.open = !p.open; },
     nbaDismiss: () => { curIx().nbaDismissed = true; },
     addPoints: () => {
-      const ix = curIx(); ix.pointsAdded = true; st.points += B.bonusPoints; st.bump = true;
+      const ix = curIx(); ix.pointsAdded = true; st.metricDone = true; st.bump = true;
       st.pointsHistory.unshift({ date: S.dates.today.slice(0, 6), label: 'Reward', pts: B.bonusPoints });
-      addHistory({ icon: 'gift', who: `${B.bonusPoints.toLocaleString()} bonus points added for <b>${C.name}</b>`, ref: 'LOY0004418', text: `New balance: ${st.points.toLocaleString()} points. Push notification sent.` });
-      toast(`${B.bonusPoints.toLocaleString()} bonus points were added to the customer's account.`); maybeResumeTranscript(); return 'norender';
+      addHistory({ icon: 'gift', who: U.nba.histWho, ref: U.nba.histRef, text: TAX ? `Refund method: ${U.metric.after}` : `New balance: ${U.metric.after} points. Push notification sent.` });
+      toast(U.nba.toast); maybeResumeTranscript(); return 'norender';
     },
     openCompose: () => {
       st.menu = null; st.compose = { typing: true, text: '' };
