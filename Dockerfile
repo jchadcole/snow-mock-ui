@@ -1,6 +1,6 @@
 FROM node:22-alpine
 WORKDIR /app
-COPY package.json server.js ./
+COPY package.json server.js CHANGELOG.md ./
 COPY lib ./lib
 COPY public ./public
 ENV PORT=8080 NODE_ENV=production

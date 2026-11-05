@@ -143,7 +143,7 @@
       </div>
     </div>
     ${S.assistOpen ? assistHtml() : ''}
-    <div class="demo-flag">Demo environment: fictional taxpayers</div>`;
+    <div class="demo-flag">Demo environment: fictional taxpayers · v${esc(S.config.version || '')}</div>`;
     bindShell();
   }
   function tabHtml(t, activeKey) {
@@ -219,6 +219,7 @@
       <label class="f" style="flex-direction:row;gap:8px;align-items:center"><input type="checkbox" id="sRing" ${S.settings.ringInbox ? 'checked' : ''}> Ring pushed calls and chats in the inbox (Accept / Decline) instead of opening them straight away</label>
       <label class="f" style="flex-direction:row;gap:8px;align-items:center"><input type="checkbox" id="sAuto" ${S.settings.autoPop ? 'checked' : ''}> Open the taxpayer record automatically when a screen pop arrives</label>
       <div class="f"><label>Brand (switching reloads the demo data with that agency's names)</label><select id="sBrand">${(S.config.brands || []).map((b) => `<option value="${b.id}" ${b.id === S.brand.id ? 'selected' : ''}>${esc(b.agency)}</option>`).join('')}</select></div>
+      <p class="small muted">Version <b>${esc(S.config.version || '')}</b> (build ${esc(S.config.commit || '')}) · <a href="#" id="sNotes">Release notes</a></p>
       <p class="small muted">Retail version of the demo (Haven &amp; Hill guided story): <a href="/retail/" target="_blank">/retail/</a> · <a href="/api-docs.html" target="_blank">API reference</a></p>`,
       `<button class="btn danger left" id="sReset">Reset demo data</button><button class="btn" id="sOut">Switch user</button><button class="btn primary" id="sSave">Save</button>`);
     $('#sSave').onclick = async () => {
@@ -226,15 +227,32 @@
       if ($('#sBrand').value !== S.brand.id) { await api('/api/admin/reset', { method: 'POST', body: { brand: $('#sBrand').value } }); location.hash = '#/home'; location.reload(); return; }
       connectSSE(); closeModal(); render();
     };
+    $('#sNotes').onclick = (e) => { e.preventDefault(); releaseNotes(); };
     $('#sOut').onclick = () => { S.user = null; store.set('user', null); closeModal(); render(); };
     $('#sReset').onclick = async () => { await api('/api/admin/reset', { method: 'POST' }); S.records = {}; S.tabs = []; saveTabs(); S.interaction = null; S.aiLog = []; closeModal(); toast('Demo data reset'); go('#/home'); };
+  }
+
+  async function releaseNotes() {
+    const { markdown } = await api('/api/changelog');
+    const inline = (x) => esc(x).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    let html = ''; let inList = false;
+    markdown.split('\n').forEach((line) => {
+      const li = line.match(/^\s*[-*] (.*)/);
+      if (li) { if (!inList) { html += '<ul>'; inList = true; } html += `<li style="${/^\s{2,}/.test(line) ? 'margin-left:18px;list-style:circle' : ''}">${inline(li[1])}</li>`; return; }
+      if (inList) { html += '</ul>'; inList = false; }
+      const h = line.match(/^(#{1,3}) (.*)/);
+      if (h) html += h[1].length === 1 ? '' : `<h${h[1].length + 1} style="margin:14px 0 4px">${inline(h[2])}</h${h[1].length + 1}>`;
+      else if (line.trim()) html += `<p style="margin:4px 0">${inline(line)}</p>`;
+    });
+    if (inList) html += '</ul>';
+    modal(`Release notes · v${esc(S.config.version)}`, `<div class="notes">${html}</div>`, '<button class="btn primary" data-close>Close</button>', { wide: true });
   }
 
   // ---------------------------------------------------------------- login
   function renderLogin() {
     document.body.className = '';
     $('#root').innerHTML = `<div class="login"><div class="brandside"><div class="brandmark wide" style="padding:0">${brandMark()}</div>
-      <h1>${esc(S.brand.agency)}<br>Taxpayer Services Workspace</h1><p style="max-width:460px;opacity:.85;margin:0">Demonstration environment for Genesys Cloud and ServiceNow-style customer service. All taxpayers, cases and data are fictional.</p></div>
+      <h1>${esc(S.brand.agency)}<br>Taxpayer Services Workspace</h1><p style="max-width:460px;opacity:.85;margin:0">Demonstration environment for Genesys Cloud and ServiceNow-style customer service. All taxpayers, cases and data are fictional.</p><p class="small" style="opacity:.7;margin:10px 0 0">Version ${esc(S.config.version || '')} · build ${esc(S.config.commit || '')}</p></div>
       <div class="panel"><h2 style="font-size:22px;margin:0 0 4px">Sign in</h2><p class="muted" style="margin:0 0 10px">Choose a demo persona. No password needed.</p>
       ${S.users.map((u) => `<button class="persona" data-user="${u.id}">${avatar(u.name, 'lg', u.id)}<div><b>${esc(u.name)}</b><br><span class="muted small">${esc(u.role)} · ${esc(u.group)}</span></div></button>`).join('')}</div></div>`;
     $$('[data-user]').forEach((b) => { b.onclick = () => { S.user = S.users.find((u) => u.id === b.dataset.user); store.set('user', S.user); connectSSE(); go('#/home'); }; });

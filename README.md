@@ -115,6 +115,20 @@ Agencies live in [`lib/brands.js`](lib/brands.js):
 
 To add one, copy a block, change the values and redeploy. Then pick it in Settings > Brand, with `?brand=<id>`, or with the `BRAND` env var. Switching reseeds the data with that agency's names. The Ohio colors are approximations of tax.ohio.gov, and the logo is loaded from tax.ohio.gov with a text fallback.
 
+## Versioning
+
+The version lives in `package.json` and follows semantic versioning. Release notes are in [`CHANGELOG.md`](CHANGELOG.md), and each release is tagged `vX.Y.Z`.
+
+You can see the running version in several places:
+- the sign-in page and the footer;
+- Settings, which also has the release notes;
+- `GET /api/version`, which returns `{version, commit, startedAt}`.
+
+To cut a release:
+1. Bump `version` in `package.json`.
+2. Add a section to `CHANGELOG.md`.
+3. Commit, then run `git tag vX.Y.Z && git push --tags`.
+
 ## Retail guided demo
 
 The original Haven & Hill retail demo (the scripted Charlotte Gong ottoman story, with brands `haven`, `northwind` and `ohiotax`) is still at **`/retail/`**. Its presenter panel opens with the backtick key.

@@ -10,6 +10,17 @@ const { seed } = require('./lib/seed');
 const { getBrand, listBrands } = require('./lib/brands');
 const { scenarios } = require('./lib/scenarios');
 
+// ---------- version ----------
+// The release version lives in package.json (semantic versioning; history in CHANGELOG.md, git tags vX.Y.Z).
+const VERSION = require('./package.json').version;
+const COMMIT = (() => {
+  if (process.env.RENDER_GIT_COMMIT) return process.env.RENDER_GIT_COMMIT.slice(0, 7);
+  if (process.env.GIT_COMMIT) return process.env.GIT_COMMIT.slice(0, 7);
+  try { return require('child_process').execSync('git rev-parse --short HEAD', { cwd: __dirname, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch { return 'local'; }
+})();
+const STARTED_AT = new Date().toISOString();
+const versionInfo = () => ({ version: VERSION, commit: COMMIT, startedAt: STARTED_AT, node: process.version, brand: brandId });
+
 const PORT = Number(process.env.PORT || 8080);
 const API_KEY = process.env.API_KEY || '';
 const FRAME_ANCESTORS = (process.env.FRAME_ANCESTORS || '').trim().replace(/^"(.*)"$/, '$1').trim() || '*';
@@ -187,8 +198,10 @@ const routes = [];
 const route = (method, pattern, handler, opts = {}) => routes.push({ method, re: new RegExp(`^${pattern.replace(/:(\w+)/g, '(?<$1>[^/]+)')}$`), handler, ...opts });
 const needTp = (id) => { const t = getTp(id); if (!t) throw nf(); return t; };
 
-route('GET', '/api/health', () => ({ status: 'ok', version: (process.env.RENDER_GIT_COMMIT || 'local').slice(0, 7), brand: brandId, seededOn: db.seededOn, time: nowLocal(), taxpayers: db.taxpayers.length, genesysLookup: !!GENESYS.clientId, frameAncestors: FRAME_ANCESTORS }));
-route('GET', '/api/config', (req) => ({ baseUrl: baseUrl(req), brand: db.brand, brands: listBrands(), today: todayInTz(), now: nowLocal(), taxYear: db.taxYear, groups: db.groups, genesysLookup: !!GENESYS.clientId, apiKeyRequired: !!API_KEY }));
+route('GET', '/api/version', () => versionInfo());
+route('GET', '/api/changelog', () => ({ version: VERSION, markdown: fs.existsSync(path.join(__dirname, 'CHANGELOG.md')) ? fs.readFileSync(path.join(__dirname, 'CHANGELOG.md'), 'utf8') : '' }));
+route('GET', '/api/health', () => ({ status: 'ok', version: VERSION, commit: COMMIT, brand: brandId, seededOn: db.seededOn, time: nowLocal(), taxpayers: db.taxpayers.length, genesysLookup: !!GENESYS.clientId, frameAncestors: FRAME_ANCESTORS }));
+route('GET', '/api/config', (req) => ({ version: VERSION, commit: COMMIT, baseUrl: baseUrl(req), brand: db.brand, brands: listBrands(), today: todayInTz(), now: nowLocal(), taxYear: db.taxYear, groups: db.groups, genesysLookup: !!GENESYS.clientId, apiKeyRequired: !!API_KEY }));
 route('GET', '/api/brands', () => listBrands());
 route('GET', '/api/users', () => db.users);
 
@@ -402,6 +415,9 @@ function serveStatic(req, res, pathname) {
   if (!fs.existsSync(file)) { const html = `${file}.html`; file = fs.existsSync(html) ? html : path.join(PUBLIC_DIR, 'index.html'); }
   const headers = { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' };
   if (FRAME_ANCESTORS !== '*') headers['Content-Security-Policy'] = `frame-ancestors ${FRAME_ANCESTORS}`;
+  headers['X-App-Version'] = VERSION;
+  // Stamp the version into HTML so script and style URLs change on every release (no stale caches after a deploy).
+  if (file.endsWith('.html')) { res.writeHead(200, headers); return res.end(fs.readFileSync(file, 'utf8').replace(/__VERSION__/g, `${VERSION}-${COMMIT}`)); }
   res.writeHead(200, headers); fs.createReadStream(file).pipe(res);
 }
 
