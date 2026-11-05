@@ -74,6 +74,12 @@
   <div class="ep"><h3><span class="m GET">GET</span>/api/taxpayers/lookup?ssn=900556789&amp;dob=1978-03-22 <span class="lock">key</span></h3>Bot authentication by full SSN and date of birth (demo values). Adds <code>refundMethod, refundTaxYear, returnReceived, returnStatus, documentationStatus, openNoticeId, unappliedPayments</code>.</div>
   <div class="ep"><h3><span class="m POST">POST</span>/api/taxpayers/{id}/unapplied/{paymentId}/apply</h3>Apply a suspense payment to the balance (resolves the linked notice).</div>
 
+  <h2>3c. Interaction records (v3 workspace)</h2>
+  <div class="ep"><h3><span class="m POST">POST</span>/api/ims</h3>Create an interaction record (IMS number). Body: <code>{taxpayerId, phone, conversationId, queue, intent, mediaType, botSessionId, assignedTo}</code>. The workspace creates one when a call rings or is accepted.</div>
+  <div class="ep"><h3><span class="m GET">GET</span>/api/ims?taxpayerId=|assignedTo=|state= &nbsp; /api/ims/{id} &nbsp; <span class="m PATCH">PATCH</span>/api/ims/{id}</h3>List, read (includes the Pilot session) and update (<code>state, verified, shortDescription, assignedTo</code>).</div>
+  <div class="ep"><h3><span class="m POST">POST</span>/api/ims/{id}/close</h3>Wrap-up: <code>{wrapCode, notes, transcript:[{time, who, text}]}</code>. It sets Closed Complete (modified by GenesysUE) and logs the call on the taxpayer.</div>
+  <div class="ep"><h3><span class="m GET">GET</span>/api/assist?scenario=|taxpayerId= &nbsp; <span class="m POST">POST</span>/api/incidents</h3>The Agent Assist script (utterances with knowledge articles and highlighted phrases), and create an incident.</div>
+
   <h2>4. Workflow endpoints</h2>
   <div class="ep"><h3><span class="m GET">GET</span>/api/taxpayers?q=|phone=|last4=|lastName=|dob=|returnId=|accountNumber=|all=1</h3>Search (summaries).</div>
   <div class="ep"><h3><span class="m GET">GET</span>/api/taxpayers/{id}</h3>Full record: profile, returns with processing steps, refunds, assessments, payments, payment plan, notices, identity, representative, cases, activity.</div>

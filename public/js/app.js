@@ -50,7 +50,7 @@
   // ---------------------------------------------------------------- state
   const S = {
     user: store.get('user', null),
-    settings: Object.assign({ autoPop: true, ringInbox: true, agentEmail: '', presence: 'Available' }, store.get('settings', {})),
+    settings: Object.assign({ autoPop: true, ringInbox: true, agentEmail: '', presence: 'On Queue', popView: 'interaction', palette: '' }, store.get('settings', {})),
     config: {}, brand: {}, users: [], today: new Date().toISOString().slice(0, 10), records: {}, tabs: store.get('tabs', []),
     interaction: null, inbox: [], inboxOpen: false, popResult: null, assistOpen: false, aiLog: [], sse: null, sseOn: false, embed: false, expanded: {}, menu: null,
   };
@@ -107,30 +107,29 @@
   function shell() {
     const r = parseRoute(); const ix = S.interaction;
     document.body.classList.toggle('embed', S.embed);
-    const pc = { Available: '#2e9e4f', Away: '#f0a400', Offline: '#9aa6ad', Busy: '#c3243a' }[S.settings.presence];
-    const activeKey = r.name === 'taxpayer' ? `tp:${r.parts[1]}` : r.name === 'case' ? `case:${r.parts[1]}` : r.name === 'home' ? 'home' : '';
+    const pc = presColor(S.settings.presence);
+    const activeKey = r.name === 'taxpayer' ? `tp:${r.parts[1]}` : r.name === 'case' ? `case:${r.parts[1]}` : r.name === 'ims' ? `ims:${r.parts[1]}` : r.name === 'home' ? 'home' : '';
     $('#root').innerHTML = `
     <div id="app">
       <div class="topbar">
         <div class="brandmark wide" title="${esc(S.brand.agency)}" data-go="#/home" style="cursor:pointer">${brandMark()}</div>
-        <div class="topnav"><span data-go="#/list/cases">All</span><span>Favorites</span><span>History</span><span>Workspaces</span><span data-go="#/kb">Knowledge</span></div>
-        <div class="ws-pill">${esc(S.brand.workspaceName || 'CSM Configurable Workspace')} <span class="star" style="color:#7fd08c">${ic('star', 'sm')}</span></div>
+        <div class="topnav"><span data-go="#/list/cases" title="All lists">All</span><span data-go="#/kb" title="Knowledge">Favorites</span><span data-go="#/list/interactions" title="Recent interactions">History</span><span data-go="#/home" title="Workspace home">Workspaces</span></div>
+        <div class="ws-pill">${esc(S.brand.workspaceName || 'CSM/FSM Configurable Workspace')} <span class="star">${ic('star', 'sm')}</span></div>
         <div class="top-right">
-          ${ix ? `<button class="topchip call" data-go="${ix.taxpayerId ? `#/taxpayer/${ix.taxpayerId}/overview` : '#/pop-results'}" title="Active Genesys Cloud interaction"><span class="d call"></span><span id="ixTimer">${ix.mediaType === 'voice' ? 'On call' : 'Chat'} ${timer(ix)}</span></button>` : ''}
-          <button class="topchip" data-go="#/genesys" title="Genesys Cloud screen pop listener"><span class="d ${S.sseOn ? 'on' : ''}" id="sseDot"></span>Genesys</button>
-          <form class="searchbox" id="gsearch">${ic('search', 'sm')}<input id="gq" placeholder="Search taxpayers, cases, returns" autocomplete="off"></form>
-          <button class="iconbtn" data-assist title="Now Assist">${ic('spark')}</button>
-          <button class="iconbtn" data-go="#/kb" title="Knowledge">${ic('help')}</button>
-          <span style="position:relative;cursor:pointer" data-usermenu title="${esc(S.user.name)} - ${esc(S.user.role)}">${avatar(S.user.name, '', S.user.id)}<i class="presence-dot" style="background:${pc}"></i></span>
+          <form class="searchbox v3" id="gsearch">${ic('search', 'sm')}<input id="gq" placeholder="Search" autocomplete="off"><span class="sdrop" data-menu="scope">${ic('down', 'sm')}</span>${S.menu === 'scope' ? `<div class="menu" style="top:30px;right:0">${[['all', 'Taxpayers, cases and returns'], ['kb', 'Knowledge articles']].map(([k, l]) => `<div data-scope="${k}">${(S.scope || 'all') === k ? ic('check', 'sm') : '<span style="width:13px"></span>'}${l}</div>`).join('')}</div>` : ''}</form>
+          <button class="iconbtn badged" data-assist title="Now Assist">${ic('chat')}${ix ? '<span class="tb">1</span>' : ''}</button>
+          <button class="iconbtn" data-go="#/kb" title="Help and knowledge">${ic('help')}</button>
+          <button class="iconbtn badged" data-go="#/genesys" title="Genesys Cloud ${S.sseOn ? '(connected)' : '(not connected)'}">${ic('phone')}${S.inbox.length || ix ? `<span class="tb">${S.inbox.length || 1}</span>` : ''}<i class="sse ${S.sseOn ? 'on' : ''}" id="sseDot"></i></button>
+          <div style="position:relative"><button class="iconbtn" data-menu="bell" title="Notifications">${ic('bell')}</button>${S.menu === 'bell' ? `<div class="menu" style="top:32px;right:-6px;min-width:260px">${(S.notes || []).slice(0, 6).map((n) => `<div data-go="${esc(n.go)}">${ic('phone', 'sm')}<span>${esc(n.text)}<br><small class="muted">${esc(n.when)}</small></span></div>`).join('') || '<div class="muted">No notifications</div>'}</div>` : ''}</div>
+          <span style="position:relative;cursor:pointer" data-usermenu title="${esc(S.user.name)} - ${esc(S.user.role)}"><span class="avatar me">${esc(initials(S.user.name))}</span><i class="presence-dot" style="background:${pc}"></i></span>
         </div>
       </div>
       <div class="body">
         <div class="rail">
           <button data-go="#/home" class="${r.name === 'home' ? 'on' : ''}" title="Home">${ic('home')}</button>
-          <button data-go="#/list/cases" class="${r.name === 'list' ? 'on' : ''}" title="Lists">${ic('list')}</button>
+          <button data-go="#/list/cases" class="${r.name === 'list' && r.parts[1] !== 'interactions' ? 'on' : ''}" title="Lists">${ic('list')}</button>
           <button data-inbox class="${S.inboxOpen ? 'on' : ''} ${S.inbox.length ? 'ring' : ''}" title="Inbox">${ic('inbox')}${S.inbox.length ? `<span class="badge">${S.inbox.length}</span>` : ''}</button>
-          <button data-go="#/kb" class="${r.name === 'kb' ? 'on' : ''}" title="Knowledge">${ic('book')}</button>
-          <button data-go="#/genesys" class="${r.name === 'genesys' ? 'on' : ''}" title="Genesys Cloud">${ic('phone')}</button>
+          <button data-go="#/list/interactions" class="${r.name === 'list' && r.parts[1] === 'interactions' ? 'on' : ''}" title="History">${ic('clock')}</button>
         </div>
         <div class="main">
           <div class="tabbar">
@@ -151,40 +150,48 @@
     let label = '', sub = '', icon = ic('user', 'sm chan');
     if (t.kind === 'tp') { const c = S.records[t.id]; if (!c) return ''; label = c.fullName; const ix = S.interaction; if (ix && ix.taxpayerId === t.id) { icon = ix.mediaType === 'voice' ? ic('phone', 'sm chan') : ic('chat', 'sm chan'); sub = `${ic('clock', 'sm')} <span class="tabTimer">${timer(ix)}</span>`; } else sub = c.type === 'Business' ? 'Business' : 'Taxpayer'; }
     if (t.kind === 'case') { icon = ic('case', 'sm chan'); label = t.label || t.id; sub = 'Case'; }
-    return `<div class="tab ${activeKey === key ? 'on' : ''}" data-go="${t.kind === 'tp' ? `#/taxpayer/${t.id}/overview` : `#/case/${t.id}`}">${icon}<div class="t-lbl"><span>${esc(label)}</span><small>${sub}</small></div><span class="x" data-closetab="${key}">${ic('x', 'sm')}</span></div>`;
+    if (t.kind === 'ims') {
+      const c = S.calls[t.id]; const live = c && ['connecting', 'active', 'wrapup'].includes(c.phase);
+      icon = ic('phone', `sm chan ${live ? 'solid' : ''}`); label = c && c.tabStage === 'loading' ? 'Loading…' : c && c.tabStage === 'record' ? 'Record' : (S.ims[t.id]?.contact || t.label || t.id);
+      sub = c && c.phase === 'wrapup' ? 'Call is in wrap-up' : '';
+    }
+    return `<div class="tab ${activeKey === key ? 'on' : ''}" data-go="${t.kind === 'tp' ? `#/taxpayer/${t.id}/overview` : t.kind === 'ims' ? `#/ims/${t.id}` : `#/case/${t.id}`}">${icon}<div class="t-lbl"><span>${esc(label)}</span><small>${sub}</small></div><span class="x" data-closetab="${key}">${ic('x', 'sm')}</span></div>`;
   }
+  function presColor(p) { return { 'On Queue': '#2e9e4f', Available: '#2e9e4f', Away: '#f0a400', Break: '#f0a400', Meal: '#f0a400', Busy: '#c3243a', Offline: '#9aa6ad' }[p] || '#6b7c86'; }
   function timer(ix) { const s = Math.max(0, Math.floor((Date.now() - ix.startedAt) / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
   setInterval(() => {
     const ix = S.interaction; if (ix) { const t = timer(ix); const el = $('#ixTimer'); if (el) el.textContent = `${ix.mediaType === 'voice' ? 'On call' : 'Chat'} ${t}`; $$('.tabTimer, .calltime').forEach((x) => { x.textContent = t; }); }
-    S.inbox.forEach((it) => { if (it.remaining > 0) it.remaining--; const el = $(`.wt[data-id="${it.id}"]`); if (el) el.textContent = `0:${String(it.remaining).padStart(2, '0')}`; });
+    S.inbox.forEach((it) => { if (it.remaining > 0) it.remaining--; const el = $(`.wt[data-id="${it.id}"]`); if (el) el.textContent = `${Math.floor(it.remaining / 60)}:${String(it.remaining % 60).padStart(2, '0')}`; });
   }, 1000);
 
   function inboxHtml() {
-    const menu = S.menu === 'presence' ? `<div class="menu" style="top:24px;left:0">${['Available', 'Away', 'Busy', 'Offline'].map((p) => `<div data-presence="${p}"><i class="dot ${p}"></i>${p}</div>`).join('')}</div>` : '';
-    const items = S.inbox.map((it) => `<div class="witem ${it.mediaType === 'voice' ? 'call' : ''}">
-      <div class="w-top">${it.mediaType === 'voice' ? ic('phone', 'sm') : ic('chat', 'sm')} ${it.mediaType === 'voice' ? 'Phone' : 'Chat'} · ${esc(it.queue || 'Inbound')}</div>
-      <div class="w-name">${esc(it.name)}</div><div class="w-sub">${esc(it.phone)}${it.intent ? ` · ${esc(it.intent)}` : ''}</div>
-      <div class="w-timer">${ic('clock', 'sm')} Time to accept <b class="wt" data-id="${it.id}">0:${String(it.remaining).padStart(2, '0')}</b></div>
-      <div class="w-actions"><button class="decline" data-decline="${it.id}">Decline</button><button class="accept" data-accept="${it.id}">Accept</button></div></div>`).join('');
-    return `<div class="inbox"><div class="inbox-head"><small>Status</small><div style="position:relative"><button class="status-btn" data-menu="presence"><i class="dot ${S.settings.presence}"></i>${S.settings.presence} ${ic('down', 'sm')}</button>${menu}</div></div>
-      <div class="inbox-list">${items || `<div class="inbox-empty">${ic('clock')}<b>No inbox items</b>Calls and chats routed by Genesys Cloud appear here.<br><br><a href="#/genesys">Simulate an interaction</a></div>`}</div></div>`;
+    const P = (S.brand.ui && S.brand.ui.presence) || ['On Queue', 'Available', 'Away', 'Busy', 'Offline'];
+    const menu = S.menu === 'presence' ? `<div class="menu" style="top:24px;left:0">${P.map((p) => `<div data-presence="${esc(p)}"><i class="dot" style="background:${presColor(p)}"></i>${esc(p)}</div>`).join('')}</div>` : '';
+    const items = S.inbox.map((it) => `<div class="witem v3 ${it.mediaType === 'voice' ? 'call' : ''}">
+      <div class="w-top">${it.mediaType === 'voice' ? ic('phone', 'sm') : ic('chat', 'sm')} <b>${it.mediaType === 'voice' ? 'Phone' : 'Chat'}</b><span class="w-num">${esc(it.imsNumber || '')}</span></div>
+      <div class="w-name">${esc(it.name)}</div><div class="w-sub">${esc(it.phone)}${it.queue ? ` · ${esc(it.queue)}` : ''}</div>
+      <div class="w-timer">Time to accept: <b class="wt" data-id="${it.id}">${Math.floor(it.remaining / 60)}:${String(it.remaining % 60).padStart(2, '0')}</b></div>
+      <div class="w-actions"><button class="decline" data-decline="${it.id}">Reject</button><button class="accept" data-accept="${it.id}">Accept</button></div></div>`).join('');
+    return `<div class="inbox"><div class="inbox-head"><small>Status</small><div class="ih-row"><div style="position:relative"><button class="status-btn" data-menu="presence"><i class="dot" style="background:${presColor(S.settings.presence)}"></i>${esc(S.settings.presence)} ${ic('down', 'sm')}</button>${menu}</div><span class="gear" data-usermenu title="Inbox settings">${ic('gear', 'sm')}</span></div></div>
+      <div class="inbox-list">${items || `<div class="inbox-empty">${ic('clock')}<b>No inbox items</b>As work items are assigned, they will appear in this panel.<br><br><a href="#/genesys">Simulate an interaction</a></div>`}</div></div>`;
   }
 
   function bindShell() {
     $('#root').onclick = (e) => {
       const close = e.target.closest('[data-closetab]');
-      if (close) { e.stopPropagation(); const [kind, id] = close.dataset.closetab.split(':'); S.tabs = S.tabs.filter((t) => !(t.kind === kind && t.id === id)); saveTabs(); const r = parseRoute(); if ((kind === 'tp' && r.name === 'taxpayer' && r.parts[1] === id) || (kind === 'case' && r.name === 'case' && r.parts[1] === id)) go('#/home'); else render(); return; }
+      if (close) { e.stopPropagation(); const [kind, id] = close.dataset.closetab.split(':'); S.tabs = S.tabs.filter((t) => !(t.kind === kind && t.id === id)); saveTabs(); const r = parseRoute(); if ((kind === 'tp' && r.name === 'taxpayer' && r.parts[1] === id) || (kind === 'case' && r.name === 'case' && r.parts[1] === id) || (kind === 'ims' && r.name === 'ims' && r.parts[1] === id)) go('#/home'); else render(); return; }
       const m = e.target.closest('[data-menu]'); if (m) { e.stopPropagation(); S.menu = S.menu === m.dataset.menu ? null : m.dataset.menu; render(); return; }
       const pr = e.target.closest('[data-presence]'); if (pr) { S.settings.presence = pr.dataset.presence; saveSettings(); S.menu = null; render(); return; }
+      const sc = e.target.closest('[data-scope]'); if (sc) { e.stopPropagation(); S.scope = sc.dataset.scope; S.menu = null; render(); return; }
       const g = e.target.closest('[data-go]'); if (g) { e.preventDefault(); go(g.dataset.go); return; }
       if (e.target.closest('[data-inbox]')) { S.inboxOpen = !S.inboxOpen; render(); return; }
-      const acc = e.target.closest('[data-accept]'); if (acc) { const it = S.inbox.find((x) => x.id === acc.dataset.accept); S.inbox = S.inbox.filter((x) => x !== it); S.inboxOpen = false; if (it) handlePop(it.params, 'inbox'); return; }
-      const dec = e.target.closest('[data-decline]'); if (dec) { S.inbox = S.inbox.filter((x) => x.id !== dec.dataset.decline); render(); return; }
+      const acc = e.target.closest('[data-accept]'); if (acc) { acc.classList.add('pressed'); const it = S.inbox.find((x) => x.id === acc.dataset.accept); setTimeout(() => { S.inbox = S.inbox.filter((x) => x !== it); S.inboxOpen = false; if (it) handlePop(it.params, 'inbox'); }, 250); return; }
+      const dec = e.target.closest('[data-decline]'); if (dec) { const it = S.inbox.find((x) => x.id === dec.dataset.decline); if (it?.params?.imsId) api(`/api/ims/${it.params.imsId}`, { method: 'PATCH', body: { state: 'Rejected' } }).catch(() => {}); S.inbox = S.inbox.filter((x) => x !== it); render(); return; }
       if (e.target.closest('[data-usermenu]')) return userMenu();
       if (e.target.closest('[data-assist]')) { S.assistOpen = !S.assistOpen; render(); return; }
       if (S.menu && !e.target.closest('.menu')) { S.menu = null; render(); }
     };
-    $('#gsearch').onsubmit = (e) => { e.preventDefault(); const q = $('#gq').value.trim(); if (q) go(`#/search?q=${encodeURIComponent(q)}`); };
+    $('#gsearch').onsubmit = (e) => { e.preventDefault(); const q = $('#gq').value.trim(); if (q) go(S.scope === 'kb' ? `#/kb?q=${encodeURIComponent(q)}` : `#/search?q=${encodeURIComponent(q)}`); };
     if (S.assistOpen) bindAssist();
   }
 
@@ -218,18 +225,20 @@
       <div class="f"><label>Genesys Cloud agent email (screen pops addressed to this agent open here)</label><input id="sAgent" value="${esc(S.settings.agentEmail || u.email)}"></div>
       <label class="f" style="flex-direction:row;gap:8px;align-items:center"><input type="checkbox" id="sRing" ${S.settings.ringInbox ? 'checked' : ''}> Ring pushed calls and chats in the inbox (Accept / Decline) instead of opening them straight away</label>
       <label class="f" style="flex-direction:row;gap:8px;align-items:center"><input type="checkbox" id="sAuto" ${S.settings.autoPop ? 'checked' : ''}> Open the taxpayer record automatically when a screen pop arrives</label>
+      <div class="frow"><div class="f"><label>Screen pops open</label><select id="sView"><option value="interaction" ${S.settings.popView !== 'taxpayer' ? 'selected' : ''}>The interaction record (v3 workspace)</option><option value="taxpayer" ${S.settings.popView === 'taxpayer' ? 'selected' : ''}>The taxpayer record (v2 layout)</option></select></div>
+      <div class="f"><label>Color scheme</label><select id="sPal"><option value="" ${!S.settings.palette ? 'selected' : ''}>Brand default (${esc((S.brand.ui && S.brand.ui.palette) || 'workspace')})</option><option value="workspace" ${S.settings.palette === 'workspace' ? 'selected' : ''}>Workspace template colors</option><option value="brand" ${S.settings.palette === 'brand' ? 'selected' : ''}>Brand colors</option></select></div></div>
       <div class="f"><label>Brand (switching reloads the demo data with that agency's names)</label><select id="sBrand">${(S.config.brands || []).map((b) => `<option value="${b.id}" ${b.id === S.brand.id ? 'selected' : ''}>${esc(b.agency)}</option>`).join('')}</select></div>
       <p class="small muted">Version <b>${esc(S.config.version || '')}</b> (build ${esc(S.config.commit || '')}) · <a href="#" id="sNotes">Release notes</a></p>
       <p class="small muted">Retail version of the demo (Haven &amp; Hill guided story): <a href="/retail/" target="_blank">/retail/</a> · <a href="/api-docs.html" target="_blank">API reference</a></p>`,
       `<button class="btn danger left" id="sReset">Reset demo data</button><button class="btn" id="sOut">Switch user</button><button class="btn primary" id="sSave">Save</button>`);
     $('#sSave').onclick = async () => {
-      S.settings.agentEmail = fieldVal('sAgent'); S.settings.ringInbox = $('#sRing').checked; S.settings.autoPop = $('#sAuto').checked; saveSettings();
+      S.settings.agentEmail = fieldVal('sAgent'); S.settings.ringInbox = $('#sRing').checked; S.settings.autoPop = $('#sAuto').checked; S.settings.popView = fieldVal('sView'); S.settings.palette = $('#sPal').value; saveSettings(); applyTheme(S.brand);
       if ($('#sBrand').value !== S.brand.id) { await api('/api/admin/reset', { method: 'POST', body: { brand: $('#sBrand').value } }); location.hash = '#/home'; location.reload(); return; }
       connectSSE(); closeModal(); render();
     };
     $('#sNotes').onclick = (e) => { e.preventDefault(); releaseNotes(); };
     $('#sOut').onclick = () => { S.user = null; store.set('user', null); closeModal(); render(); };
-    $('#sReset').onclick = async () => { await api('/api/admin/reset', { method: 'POST' }); S.records = {}; S.tabs = []; saveTabs(); S.interaction = null; S.aiLog = []; closeModal(); toast('Demo data reset'); go('#/home'); };
+    $('#sReset').onclick = async () => { await api('/api/admin/reset', { method: 'POST' }); S.records = {}; S.tabs = []; saveTabs(); S.interaction = null; S.aiLog = []; S.calls = {}; S.ims = {}; S.call = null; S.imsHist = {}; closeModal(); toast('Demo data reset'); go('#/home'); };
   }
 
   async function releaseNotes() {
@@ -261,10 +270,10 @@
   // ---------------------------------------------------------------- render
   async function render() {
     if (!S.user) return renderLogin();
-    const keep = {}; $$('.c-body, .colR, .page, .lscroll').forEach((el, i) => { keep[el.className + i] = el.scrollTop; });
+    const keep = {}; $$('.c-body, .colR, .page, .lscroll, .ims-hist, .ims-form').forEach((el, i) => { keep[el.className + i] = el.scrollTop; });
     shell();
     await renderPage();
-    $$('.c-body, .colR, .page, .lscroll').forEach((el, i) => { const k = el.className + i; if (keep[k] != null) el.scrollTop = keep[k]; });
+    $$('.c-body, .colR, .page, .lscroll, .ims-hist, .ims-form').forEach((el, i) => { const k = el.className + i; if (keep[k] != null) el.scrollTop = keep[k]; });
     const tr = $('#transcript'); if (tr) tr.parentElement.scrollTop = tr.parentElement.scrollHeight;
   }
   async function renderPage() {
@@ -276,6 +285,7 @@
         case 'search': return await pageSearch(el, r);
         case 'taxpayer': return await pageTaxpayer(el, r);
         case 'case': return await pageCase(el, r);
+        case 'ims': return await pageIms(el, r);
         case 'kb': return await pageKb(el, r);
         case 'genesys': return await pageGenesys(el);
         case 'pop-results': return pagePopResults(el);
@@ -338,12 +348,15 @@
       const qs = filter === 'mine' ? `assignedTo=${encodeURIComponent(S.user.name)}&state=open` : filter === 'open' ? 'state=open' : '';
       const rows = await api(`/api/cases?${qs}`);
       body = `<div class="filters">${[['mine', 'My open cases'], ['open', 'All open'], ['all', 'All cases']].map(([k, l]) => `<button class="btn sm ${filter === k ? 'on' : ''}" data-go="#/list/cases?filter=${k}">${l}</button>`).join('')}</div><div class="card" style="padding:0">${casesTable(rows)}</div>`;
+    } else if (what === 'interactions') {
+      const rows = await api(`/api/ims${filter === 'mine' ? `?assignedTo=${encodeURIComponent(S.user.name)}` : ''}`);
+      body = `<div class="filters">${[['all', 'All interactions'], ['mine', 'Assigned to me']].map(([k, l]) => `<button class="btn sm ${filter === k ? 'on' : ''}" data-go="#/list/interactions?filter=${k}">${l}</button>`).join('')}</div><div class="card" style="padding:0"><table class="tbl"><tr><th>Number</th><th>Opened</th><th>Contact</th><th>Short description</th><th>Type</th><th>State</th><th>Assigned to</th></tr>${rows.map((x) => `<tr class="click" data-go="#/ims/${x.id}"><td class="link">${esc(x.number)}</td><td class="nowrap">${fmtDT(x.opened)}</td><td>${esc(x.contact)}</td><td>${esc(x.shortDescription)}</td><td>${esc(x.type)}</td><td>${esc(x.state)}</td><td>${esc(x.assignedTo)}</td></tr>`).join('') || '<tr><td colspan="7" class="empty">No interactions</td></tr>'}</table></div>`;
     } else {
       const rows = await api('/api/taxpayers?all=1');
       body = `<div class="card" style="padding:0">${tpTable(rows)}</div>`;
     }
-    el.innerHTML = `<div class="page"><div class="page-h"><h2>${what === 'cases' ? 'Cases' : 'Taxpayers'}</h2>
-      <div class="filters" style="margin:0 0 0 14px"><button class="btn sm ${what === 'cases' ? 'on' : ''}" data-go="#/list/cases">Cases</button><button class="btn sm ${what === 'taxpayers' ? 'on' : ''}" data-go="#/list/taxpayers">Taxpayers</button></div>
+    el.innerHTML = `<div class="page"><div class="page-h"><h2>${what === 'cases' ? 'Cases' : what === 'interactions' ? 'Interactions' : 'Taxpayers'}</h2>
+      <div class="filters" style="margin:0 0 0 14px"><button class="btn sm ${what === 'cases' ? 'on' : ''}" data-go="#/list/cases">Cases</button><button class="btn sm ${what === 'taxpayers' ? 'on' : ''}" data-go="#/list/taxpayers">Taxpayers</button><button class="btn sm ${what === 'interactions' ? 'on' : ''}" data-go="#/list/interactions">Interactions</button></div>
       <div class="r">${what === 'cases' ? '<button class="btn primary" data-newcase>New</button>' : `<button class="btn primary" data-go="#/register">New contact</button>`}</div></div>${body}</div>`;
     el.onclick = listClicks;
   }
@@ -369,7 +382,7 @@
   async function pageTaxpayer(el, r) {
     const id = r.parts[1]; const tab = r.parts[2] || 'overview';
     const t = await loadTp(id); openTab('tp', id);
-    const ix = S.interaction && S.interaction.taxpayerId === id ? S.interaction : null;
+    const ix = S.interaction && S.interaction.taxpayerId === id && !S.interaction.imsId ? S.interaction : null;
     if (!$$('.tab').some((x) => x.dataset.go === `#/taxpayer/${id}/overview`)) shell();
     const counts = { returns: t.returns.length, notices: t.notices.length, cases: t.cases.length };
     el.innerHTML = `<div class="rec ${ix ? 'with-ix' : ''}">
@@ -870,6 +883,328 @@
     if (sc.outcome === 'Contained') openTaxpayer(sc.taxpayerId, 'activity'); else render();
   }
 
+  // ---------------------------------------------------------------- v3 interaction workspace (IMS record)
+  // Layout and click behavior follow the workspace template: call card + Customer History on the left, the Interaction
+  // form in the middle, Agent Assist on the right, a utility rail, a Wrap up dock and an adherence toast. Text comes from data.
+  const UI = () => Object.assign({ recordTitle: 'Agent Needed', acceptSeconds: 55, adherenceToast: true, adherenceText: 'Out of Adherence: You are not scheduled for this time. Please select the correct status.', wrapCodes: ['Payment / Billing Inquiry', 'Claims Concern'], assistIntervalMs: 7000, reasonContacted: 'Escalation to human agent', resolution: 'Customer escalated before resolution', presence: ['On Queue', 'Available', 'Away', 'Busy', 'Offline'] }, S.brand.ui || {});
+  S.calls = {}; S.ims = {}; S.call = null; S.imsUi = { side: 'assist', collapsed: false };
+  const tzName = () => { try { return new Intl.DateTimeFormat('en-US', { timeZone: S.brand.timeZone || 'America/New_York', timeZoneName: 'short' }).formatToParts(new Date()).find((p) => p.type === 'timeZoneName').value; } catch { return ''; } };
+  const hhmm = (ms) => new Intl.DateTimeFormat('en-GB', { timeZone: S.brand.timeZone || 'America/New_York', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(ms));
+  const nowNaive = () => { const p = new Intl.DateTimeFormat('en-CA', { timeZone: S.brand.timeZone || 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).formatToParts(new Date()); const g = (t) => p.find((x) => x.type === t).value; return `${g('year')}-${g('month')}-${g('day')}T${g('hour')}:${g('minute')}:${g('second')}`; };
+  function ago(d) {
+    const m = Math.round((Date.parse(nowNaive()) - Date.parse(d.length === 10 ? d + 'T12:00:00' : d)) / 60000);
+    if (m < 1) return 'just now'; if (m < 45) return `${m} minute${m === 1 ? '' : 's'} ago`; if (m < 90) return 'about an hour ago';
+    if (m < 1440) return `${Math.round(m / 60)} hours ago`; const dd = Math.round(m / 1440); if (dd < 30) return `${dd} day${dd === 1 ? '' : 's'} ago`;
+    const mo = Math.round(dd / 30); return mo < 12 ? `${mo} month${mo === 1 ? '' : 's'} ago` : `${Math.round(mo / 12)} year${mo < 18 ? '' : 's'} ago`;
+  }
+  const clock = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); return [Math.floor(s / 3600), Math.floor(s / 60) % 60, s % 60].map((n) => String(n).padStart(2, '0')).join(':'); };
+  const fill = (text, c) => String(text || '').replace(/\{agent\}/g, S.user.name.split(' ')[0]).replace(/\{first\}/g, (c && c.first) || '');
+  const IC3 = {
+    keypad: '<circle cx="6" cy="5" r="1.2"/><circle cx="12" cy="5" r="1.2"/><circle cx="18" cy="5" r="1.2"/><circle cx="6" cy="11" r="1.2"/><circle cx="12" cy="11" r="1.2"/><circle cx="18" cy="11" r="1.2"/><circle cx="6" cy="17" r="1.2"/><circle cx="12" cy="17" r="1.2"/><circle cx="18" cy="17" r="1.2"/>',
+    flag: '<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>', arrow: '<path d="M4 12h15M13 6l6 6-6 6"/>', micoff: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3M4 4l16 16"/>',
+    holdph: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2"/><path d="M16 3v5M19 3v5"/>', phoneoff: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2"/><path d="M3 3l18 18"/>',
+    cap: '<path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c3 2 9 2 12 0v-5M22 9v6"/>', clip: '<path d="M20 12l-8 8a5 5 0 01-7-7l9-9a3.5 3.5 0 015 5l-9 9a2 2 0 01-3-3l8-8"/>',
+    script: '<path d="M8 3h11v15a3 3 0 01-3 3H6a3 3 0 01-3-3v-2h11v2a3 3 0 003 3"/><path d="M8 3a3 3 0 00-3 3v10M11 8h5M11 12h5"/>', image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/>',
+    filter: '<path d="M4 5h16l-6 7v6l-4 2v-8z"/>', cal: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>', chevup: '<path d="M6 15l6-6 6 6"/>', expand: '<path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/>',
+    plus2: '<path d="M12 4v16M4 12h16" stroke-width="3"/>', kbdoc: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/>', gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',
+  };
+  Object.assign(IC, IC3);
+  const spinner = (label) => `<div class="spin-wrap"><span class="spin"></span>${label ? `<div>${esc(label)}</div>` : ''}</div>`;
+
+  // Create (or reuse) the interaction record and open it as the active call.
+  async function openCall(ix, imsId) {
+    const t = ix.taxpayerId ? await loadTp(ix.taxpayerId) : null;
+    let rec = imsId ? await api(`/api/ims/${imsId}`).catch(() => null) : null;
+    if (!rec) rec = await api('/api/ims', { method: 'POST', body: { taxpayerId: ix.taxpayerId || '', phone: ix.phone, conversationId: ix.conversationId, queue: ix.queue, intent: ix.intent, mediaType: ix.mediaType, botSessionId: ix.bot?.id || '', customerName: ix.customerName, assignedTo: S.user.name } });
+    rec = await api(`/api/ims/${rec.id}`, { method: 'PATCH', body: { state: 'Work in Progress', assignedTo: S.user.name } });
+    S.ims[rec.id] = rec; S.interaction = ix; ix.imsId = rec.id;
+    const c = { id: rec.id, phase: 'connecting', tabStage: 'loading', accepted: Date.now(), first: t?.firstName || '', toast: false, histLoading: false, assist: 'related', script: [], shown: [], votes: {}, fb: {}, pill: 0, summaryOpen: true, muted: false, held: false, rec: true, flagged: false, keypad: '', wrap: null, events: [] };
+    S.calls[rec.id] = c; S.call = rec.id;
+    if (!S.tabs.some((x) => x.kind === 'ims' && x.id === rec.id)) { S.tabs.push({ kind: 'ims', id: rec.id, label: rec.contact || rec.phone || rec.id }); saveTabs(); }
+    go(`#/ims/${rec.id}`);
+    c.script = await api(`/api/assist?${new URLSearchParams({ scenario: rec.scenario || '', taxpayerId: rec.taxpayerId || '' })}`).catch(() => []);
+    const step = (ms, fn) => new Promise((res) => setTimeout(() => { fn(); res(); }, ms));
+    await step(600, () => { c.tabStage = 'record'; paintTabs(); });
+    await step(600, () => { c.tabStage = 'name'; paintTabs(); });
+    await step(1600, () => { c.phase = 'active'; c.connectedAt = Date.now(); c.toast = !!UI().adherenceToast; c.histLoading = true; c.events.push({ at: Date.now(), who: 'system', text: 'Agent has joined.' }); imsPaint(); });
+    await step(900, () => { c.histLoading = false; c.assist = 'loading'; imsPaint(); });
+    await step(1200, () => { c.assist = 'live'; imsPaint(); scheduleAssist(c); });
+  }
+  function scheduleAssist(c) {
+    clearTimeout(c.aTimer);
+    if (c.phase !== 'active' || c.shown.length >= c.script.length) return;
+    c.aTimer = setTimeout(() => nextUtterance(c), c.shown.length ? UI().assistIntervalMs : Math.max(2500, UI().assistIntervalMs / 2));
+  }
+  function nextUtterance(c) {
+    if (c.phase !== 'active' || c.shown.length >= c.script.length) return;
+    const line = c.script[c.shown.length];
+    c.shown.push({ ...line, at: Date.now() }); c.events.push({ at: Date.now(), who: line.who, text: fill(line.text, c) });
+    if (line.article) c.pill++;
+    if (parseRoute().name === 'ims' && parseRoute().parts[1] === c.id) paintAssist();
+    scheduleAssist(c);
+  }
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== ']' || /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '')) return;
+    const c = S.calls[S.call]; if (c && c.phase === 'active') { clearTimeout(c.aTimer); nextUtterance(c); }
+  });
+  setInterval(() => {
+    Object.values(S.calls).forEach((c) => {
+      if (c.phase === 'active') $$(`.ims-clock[data-c="${c.id}"]`).forEach((x) => { x.textContent = clock(Date.now() - c.connectedAt); });
+      if (c.wrap) $$(`.wrap-clock[data-c="${c.id}"]`).forEach((x) => { x.textContent = clock(Date.now() - c.wrap.startedAt); });
+    });
+  }, 1000);
+
+  function paintTabs() { const tb = $('.tabbar'); if (!tb) return; shell(); renderPage(); }
+  function imsCtx() { const r = parseRoute(); const id = r.parts[1]; const rec = S.ims[id]; return { id, rec, c: S.calls[id] || null, t: rec && rec.taxpayerId ? S.records[rec.taxpayerId] : null }; }
+  function imsPaint() { if (parseRoute().name !== 'ims') return; const { rec } = imsCtx(); if (!rec) return; paintCard(); paintHist(); paintHead(); paintAssist(); paintToast(); }
+
+  async function pageIms(el, r) {
+    const id = r.parts[1];
+    S.ims[id] = S.ims[id] && S.calls[id] ? S.ims[id] : await api(`/api/ims/${id}`);
+    const rec = S.ims[id];
+    if (!S.tabs.some((x) => x.kind === 'ims' && x.id === id)) { S.tabs.push({ kind: 'ims', id, label: rec.contact || rec.id }); saveTabs(); shell(); }
+    if (rec.taxpayerId) await loadTp(rec.taxpayerId);
+    if (rec.taxpayerId) S.imsHist = S.imsHist || {};
+    if (rec.taxpayerId && (!S.imsHist[rec.taxpayerId] || S.imsHist[rec.taxpayerId].at < Date.now() - 2000)) S.imsHist[rec.taxpayerId] = { at: Date.now(), list: await api(`/api/ims?taxpayerId=${rec.taxpayerId}`) };
+    el.innerHTML = `<div class="ims ${S.imsUi.side === 'none' ? 'no-assist' : ''}" id="ims">
+      <div class="ims-side"><div id="imsCard"></div><div class="ctx-tabs"><span class="on">Customer</span></div><div class="ims-hist" id="imsHist"></div></div>
+      <div class="ims-main"><div class="ims-head" id="imsHead"></div><div class="ims-form" id="imsForm"></div></div>
+      <div class="ims-assist" id="imsAssist"></div>
+      <div class="ims-rail">${[['cap', 'learn', 'Learning'], ['clip', 'attach', 'Attachments'], ['doc', 'details', 'Record details'], ['plus2', 'assist', 'Agent Assist'], ['script', 'script', 'Script'], ['image', 'images', 'Images']].map(([i, k, l]) => `<button data-side="${k}" class="${S.imsUi.side === k ? 'on' : ''} ${k === 'assist' ? 'aa' : ''}" title="${l}">${ic(i)}</button>`).join('')}</div>
+      <div id="imsWrap"></div><div id="imsToast"></div></div>`;
+    paintCard(); paintHist(); paintHead(); paintForm(); paintAssist(); paintWrap(); paintToast();
+    el.onclick = (e) => imsClicks(e);
+  }
+
+  function paintCard() {
+    const box = $('#imsCard'); if (!box) return; const { rec, c } = imsCtx();
+    const phase = c ? c.phase : 'closed';
+    const loc = `<div class="loc"><b>${esc(rec.location || '')}</b><small>${esc(rec.phone || '')}</small></div>`;
+    let html;
+    if (phase === 'connecting') html = `<div class="cc-h">${ic('phone', 'sm')} <b>Connecting…</b></div>${loc}`;
+    else if (phase === 'active') html = `<div class="cc-h"><b>${c.held ? 'On hold' : 'Active call'}</b> <span class="ims-clock" data-c="${c.id}">${clock(Date.now() - c.connectedAt)}</span></div>${loc}
+      <div class="cc-ctl"><div style="position:relative"><button class="rec ${c.rec ? 'on' : ''}" data-c="recmenu" title="Recording">${c.rec ? '<i class="recdot"></i>' : ''}REC ${ic('down', 'sm')}</button>${S.menu === 'rec' ? `<div class="menu" style="top:26px;left:0"><div data-c="rec">${c.rec ? 'Pause recording' : 'Resume recording'}</div></div>` : ''}</div>
+        <button class="${c.muted ? 'muted' : ''}" data-c="mute" title="${c.muted ? 'Unmute yourself' : 'Mute yourself'}">${ic(c.muted ? 'micoff' : 'mic')}</button>
+        <button class="${c.held ? 'on' : ''}" data-c="hold" title="${c.held ? 'Take off hold' : 'Hold'}">${ic('holdph')}</button>
+        <div style="position:relative"><button class="${S.menu === 'keypad' ? 'on' : ''}" data-c="keypadmenu" title="Keypad">${ic('keypad')}</button>${S.menu === 'keypad' ? `<div class="menu keypad" style="top:30px;left:-40px"><div class="kd">${esc(c.keypad) || '&nbsp;'}</div><div class="kg">${'123456789*0#'.split('').map((d) => `<span data-dtmf="${d}">${d}</span>`).join('')}</div></div>` : ''}</div>
+        <button data-c="transfer" title="Transfer">${ic('arrow')}</button>
+        <button class="${c.flagged ? 'on' : ''}" data-c="flag" title="${c.flagged ? 'Remove flag' : 'Flag interaction'}">${ic('flag')}</button>
+        <button class="hang" data-c="hangup" title="Disconnect">${ic('hang')}</button></div>`;
+    else if (phase === 'wrapup') html = `<div class="cc-h"><b>Call ended</b> <span>${clock(c.endedAt - c.connectedAt)}</span></div>${loc}`;
+    else if (phase === 'unavailable') html = `<div class="cc-h ended">${ic('phoneoff', 'sm')} <b>Phone is not available</b></div>`;
+    else html = `<div class="cc-h ended">${ic('hang', 'sm')} <b>The call has ended</b></div>`;
+    box.className = `callbox ${phase}`; box.innerHTML = html;
+  }
+
+  function histItems(rec, t) {
+    if (!t) return [];
+    const items = [];
+    (S.imsHist?.[t.id]?.list || []).filter((x) => x.state === 'Closed Complete').forEach((x) => items.push({ d: x.closed || x.opened, icon: 'phone', cls: 'call', title: `${x.contact} called ${x.assignedTo}`, ref: x.number, sub: x.shortDescription, go: `ims:${x.id}` }));
+    (t.cases || []).forEach((cs) => items.push({ d: cs.opened, icon: 'case', cls: 'case', title: `${t.type === 'Business' ? t.fullName : t.fullName} created case`, ref: cs.number, meta: [cs.assignedTo, t.fullName, cs.state].filter(Boolean).join(' • '), sub: cs.shortDescription, go: `case:${cs.id}` }));
+    (t.botSessions || []).forEach((b) => items.push({ d: b.date, icon: 'spark', cls: 'bot', title: `${t.fullName} talked to ${b.botName}`, ref: b.outcome, sub: b.intent, go: `bot:${b.id}` }));
+    (t.notices || []).forEach((n) => items.push({ d: n.date, icon: 'doc', cls: 'notice', title: `${n.letter} ${n.type} mailed`, ref: n.id, sub: n.status, go: `notice:${n.id}` }));
+    return items.filter((x) => x.d).sort((a, b) => b.d.localeCompare(a.d));
+  }
+  function paintHist() {
+    const box = $('#imsHist'); if (!box) return; const { rec, c, t } = imsCtx();
+    const hs = S.imsUi; const q = (hs.hq || '').toLowerCase();
+    let items = histItems(rec, t).filter((x) => (!q || `${x.title} ${x.ref} ${x.sub}`.toLowerCase().includes(q)) && (!hs.hf || x.cls === hs.hf) && (!hs.h30 || Date.parse(nowNaive()) - Date.parse(x.d) < 30 * 864e5));
+    let last = ''; const today = nowNaive().slice(0, 10);
+    const rows = items.map((x) => { const day = x.d.slice(0, 10); const chip = day !== last ? `<div class="daychip"><span>${day === today ? 'Today' : fmtD(day)}</span></div>` : ''; last = day;
+      return `${chip}<div class="hitem" data-hgo="${esc(x.go)}"><span class="hic ${x.cls}">${ic(x.icon, 'sm')}</span><div class="hb"><div class="ht2"><b>${esc(x.title)}</b><span>${esc(ago(x.d))}</span></div><a class="ref">${esc(x.ref)}</a>${x.meta ? `<small> • ${esc(x.meta)}</small>` : ''}<div class="hs">${esc(x.sub || '')}</div></div></div>`; }).join('');
+    box.innerHTML = `<div class="hh"><h3>Customer History</h3><span data-h="search" class="${hs.hsearch ? 'on' : ''}" title="Search">${ic('search')}</span><span data-h="filter" class="${hs.hf ? 'on' : ''}" title="Filter" style="position:relative">${ic('filter')}${S.menu === 'hfilter' ? `<div class="menu" style="top:24px;right:0">${[['', 'All activity'], ['call', 'Calls'], ['case', 'Cases'], ['bot', 'Virtual agent'], ['notice', 'Notices']].map(([k, l]) => `<div data-hf="${k}">${hs.hf === k ? ic('check', 'sm') : '<span style="width:13px"></span>'}${l}</div>`).join('')}</div>` : ''}</span><span data-h="cal" class="${hs.h30 ? 'on' : ''}" title="${hs.h30 ? 'Showing the last 30 days' : 'Last 30 days'}">${ic('cal')}</span></div>
+      ${hs.hsearch ? `<form id="hForm" class="hsearch"><input id="hQ" placeholder="Search history" value="${esc(hs.hq || '')}"></form>` : ''}
+      <div class="hlist">${c && c.histLoading ? spinner() : !t ? '<div class="empty">No customer on this interaction</div>' : rows || '<div class="empty">No history</div>'}</div>`;
+    const f = $('#hForm'); if (f) { f.onsubmit = (e) => { e.preventDefault(); hs.hq = $('#hQ').value; paintHist(); }; $('#hQ').oninput = (e) => { hs.hq = e.target.value; clearTimeout(hs.hT); hs.hT = setTimeout(() => { paintHist(); const i = $('#hQ'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }, 250); }; }
+  }
+
+  function paintHead() {
+    const box = $('#imsHead'); if (!box) return; const { rec, c } = imsCtx();
+    const live = c && ['connecting', 'active', 'wrapup'].includes(c.phase) && rec.state !== 'Closed Complete';
+    const btns = live ? [['callback', 'Genesys Schedule Callback'], ['incident', 'Create Incident'], ['close', 'Close'], ['case', 'Create Case']] : [['incident', 'Create Incident'], ['case', 'Create Case'], ['save', 'Save']];
+    const t = rec.taxpayerId ? S.records[rec.taxpayerId] : null;
+    const un = t && (t.unapplied || []).find((u) => /unapplied/i.test(u.status)); const held = t && t.returns.find((x) => x.refund && /hold/i.test(x.refund.status));
+    const more = S.menu === 'imsmore' ? `<div class="menu" style="top:34px;right:0;min-width:220px">${t ? `<div data-c="opentp">${ic('user', 'sm')} Open taxpayer record</div>${t.identity.status !== 'Verified' ? `<div data-a="verify">${ic('shield', 'sm')} Verify identity</div>` : ''}${un ? `<div data-a="apply" data-arg="${un.id}">${ic('cash', 'sm')} Apply suspense payment</div>` : ''}${held ? `<div data-c="refunds">${ic('cash', 'sm')} Refund details</div>` : ''}<div data-a="email">${ic('mail', 'sm')} Email the taxpayer</div>` : ''}${rec.botSessionId ? `<div data-a="botview" data-arg="${rec.botSessionId}">${ic('spark', 'sm')} View ${esc(rec.bot?.botName || 'virtual agent')} transcript</div>` : ''}<div data-c="copy">${ic('copy', 'sm')} Copy ${esc(rec.number)}</div></div>` : '';
+    box.innerHTML = `<h2>${esc(rec.shortDescription || UI().recordTitle)} <span class="tagic" title="Tags">${ic('tag')}</span></h2>
+      <div class="acts">${btns.map(([k, l]) => `<button class="btn" data-c="${k}">${esc(l)}</button>`).join('')}<div style="position:relative"><button class="btn icon" data-c="more" title="More actions">${ic('dotsh')}</button>${more}</div></div>`;
+  }
+
+  function paintForm() {
+    const box = $('#imsForm'); if (!box) return; const { rec, t } = imsCtx();
+    const verified = rec.verified || (t && t.identity.status === 'Verified');
+    const ro = (l, v, extra = '', cls = '') => `<div class="f3 ${cls}"><label>${l}</label><div class="fv ro">${esc(v || '')}${extra}</div></div>`;
+    const lk = (l, v, k) => `<div class="f3"><label>${l}</label><div class="fv lk"><span>${esc(v || '')}</span><span class="fi"><span data-c="info-${k}" title="Preview">${ic('info', 'sm')}</span><span data-c="find-${k}" title="Look up">${ic('search', 'sm')}</span></span></div></div>`;
+    const mod = rec.modifiedBy ? `<div class="modchip">${ic('info', 'sm')} ${esc(rec.modifiedBy)} has modified this field value</div>` : '';
+    const tz = tzName();
+    box.innerHTML = `<div class="sec-h"><span class="dots">${ic('dots')}</span><h3>Interaction</h3><span class="chev ${S.imsUi.collapsed ? 'down' : ''}" data-c="collapse">${ic('chevup')}</span></div>
+      ${S.imsUi.collapsed ? '' : `<div class="fgrid">
+        ${ro('Number', rec.number)}<div class="f3"><label>State</label><div class="fv ro ${rec.modifiedBy ? 'mod' : ''}">${esc(rec.state)}</div>${mod}</div>
+        ${ro('Type', rec.type)}${lk('Assigned to', rec.assignedTo, 'user')}
+        ${lk('Account', rec.account, 'account')}<div></div>
+        ${lk('Contact', rec.contact, 'contact')}<div></div>
+        <div class="f3 chk"><label class="cb"><input type="checkbox" id="imsVer" ${verified ? 'checked' : ''}><span>Verified</span></label></div><div></div>
+        <div class="f3 wide"><label>Short description</label><input id="imsSd" class="fv ${rec.modifiedBy ? 'mod' : ''}" value="${esc(rec.shortDescription)}"></div>
+        ${rec.transcript && rec.transcript.length ? `<div class="f3 wide"><label>Internal Transcript</label><div class="fv ro transcript3">${rec.transcript.map((l) => `<div>[${esc(l.time)} ${esc(tz)}] ${esc(l.who)}: ${esc(l.text)}</div>`).join('')}</div></div>` : ''}
+        ${rec.wrapCode ? ro('Wrap up code', rec.wrapCode) : ''}${rec.notes && rec.state === 'Closed Complete' ? `<div class="f3 wide"><label>Wrap up notes</label><div class="fv ro">${esc(rec.notes)}</div></div>` : ''}
+        ${rec.cases && rec.cases.length ? ro('Related cases', rec.cases.join(', ')) : ''}
+      </div>`}`;
+    const v = $('#imsVer'); if (v) v.onchange = () => { if (!t) { v.checked = false; return toast('No taxpayer on this interaction'); } if (t.identity.status !== 'Verified' && v.checked) { v.checked = false; return verifyModal(t); } rec.verified = v.checked; api(`/api/ims/${rec.id}`, { method: 'PATCH', body: { verified: v.checked } }); };
+    const sd = $('#imsSd'); if (sd) sd.onchange = () => { rec.shortDescription = sd.value; paintHead(); };
+  }
+
+  function hl(text, phrase) {
+    const e = esc(text); if (!phrase) return e; const p = esc(phrase); const i = e.toLowerCase().indexOf(p.toLowerCase());
+    return i < 0 ? e : `${e.slice(0, i)}<mark>${e.slice(i, i + p.length)}</mark>${e.slice(i + p.length)}`;
+  }
+  const thumbs = (c, id) => `<span class="thumbs"><span data-vote="up" data-kb="${id}" class="${c.votes[id] === 'up' ? 'sel' : ''}" title="Relevant">${ic('up')}</span><span data-vote="down" data-kb="${id}" class="${c.votes[id] === 'down' ? 'sel' : ''}" title="Irrelevant">${ic('dn')}</span></span>`;
+  function transferSummary(rec, c) {
+    const bot = rec.bot; if (!bot) return '';
+    const U = UI();
+    return `<div class="tsum ${c.shown.some((x) => x.article) ? 'old' : ''}" title="AI generated this summary. It is recommended to review for accuracy."><div class="tsh">${ic('spark', 'sm')} <b>Transfer Summary</b></div>
+      ${c.summaryOpen ? `<div class="tsl"><b>Reason contacted</b><p>${esc(bot.outcome === 'Transferred' ? U.reasonContacted : bot.intent)}</p></div><div class="tsl"><b>Summary</b><p>${esc(bot.summary || '')}</p></div><div class="tsl"><b>Resolution</b><p>${esc(bot.outcome === 'Transferred' ? U.resolution : 'Resolved by the virtual agent')}</p></div>` : `<p class="small">${esc((bot.summary || '').slice(0, 90))}…</p>`}
+      <a class="showless" data-c="summary">${c.summaryOpen ? `${ic('chevup', 'sm')} Show less` : `${ic('down', 'sm')} Show more`}</a></div>`;
+  }
+  function paintAssist() {
+    const box = $('#imsAssist'); if (!box) return; const { rec, c, t } = imsCtx();
+    const side = S.imsUi.side;
+    if (side !== 'assist') { box.innerHTML = sidePanel(side, rec, t); return; }
+    const mode = c ? c.assist : 'awaiting';
+    const search = (ph, val, focus) => `<form class="ksearch ${focus ? 'focus' : ''}" id="kForm">${ic('search')}<input id="kQ" placeholder="${ph}" value="${esc(val || '')}" autocomplete="off">${val ? `<span data-c="kclear">${ic('x', 'sm')}</span>` : ''}</form>`;
+    const results = (list) => list.length ? list.map((k) => `<div class="kcard"><div class="kt"><span>${ic('kbdoc', 'sm')}</span><a data-kbopen="${k.id}">${esc(k.title)}</a></div><p>${esc(k.summary)}</p></div>`).join('') : `<div class="nomatch"><b>No Matches Found</b><div>Try modifying your search text or filter to find what you are looking for.</div></div>`;
+    let html = '';
+    if (mode === 'awaiting' || !c) html = `<div class="await">${spinner()}<b>Awaiting Conversation</b></div>`;
+    else if (mode === 'loading') html = `<div class="await">${spinner('Loading')}</div>`;
+    else if (mode === 'related') { const q = c.kq ?? rec.shortDescription; html = `${search('Search knowledge', q)}<div class="rs-h">Related Search Results</div>${results(c.kres || [])}`; if (!c.kres) kbSearch(c, q); }
+    else if (mode === 'live') {
+      const items = [...c.shown].reverse();
+      html = `${c.pill ? `<div class="newpill" data-c="pill">${c.pill} New Suggestion${c.pill > 1 ? 's' : ''} ${ic('chevup', 'sm')}</div>` : ''}${search('Search knowledge', c.kq, true)}
+        ${c.kq && c.kres ? `<div class="rs-h">Search results <a data-c="kclear">Clear</a></div>${results(c.kres)}<hr>` : ''}
+        <div class="sugg3">${items.map((x, i) => `<div class="utt ${i > 0 ? 'old' : ''}"><q>${esc(fill(x.text, c))}</q>${x.article ? `<div class="kcard"><div class="kt"><span>${ic('kbdoc', 'sm')}</span><a data-kbopen="${x.article.id}">${esc(x.article.title)}</a>${thumbs(c, x.article.id)}</div><p>${hl(x.article.text, x.hl)}</p></div>` : ''}</div>`).join('')}
+        ${transferSummary(rec, c)}${!items.length && !rec.bot ? '<div class="nomatch"><b>Listening</b><div>Suggestions appear here as the caller speaks.</div></div>' : ''}</div>`;
+    } else if (mode === 'feedback') {
+      const arts = []; c.shown.forEach((x) => { if (x.article && !arts.some((a) => a.id === x.article.id)) arts.push({ ...x.article, hl: x.hl }); });
+      const left = arts.filter((a) => !c.fb[a.id]);
+      html = `<div class="fb-h">Would you like to provide feedback for the articles below?</div>${left.map((a) => `<div class="kcard fbc ${c.fbSel === a.id ? 'sel' : ''}" data-fbsel="${a.id}"><div class="kt"><span>${ic('kbdoc', 'sm')}</span><a data-kbopen="${a.id}">${esc(a.title)}</a>${thumbs(c, a.id)}</div><p>${hl(a.text, a.hl)}</p><div class="fbb"><button class="btn navy" data-fb="send" data-kb="${a.id}">Provide Feedback</button><button class="btn" data-fb="dismiss" data-kb="${a.id}">Dismiss</button></div></div>`).join('') || `<div class="nomatch"><b>${arts.length ? 'Thanks for your feedback' : 'No articles were suggested'}</b></div>`}`;
+    }
+    const sc = box.scrollTop; box.innerHTML = html; box.scrollTop = mode === 'live' ? 0 : sc;
+    const kf = $('#kForm'); if (kf) kf.onsubmit = (e) => { e.preventDefault(); c.kq = $('#kQ').value.trim(); c.kres = null; if (c.kq) kbSearch(c, c.kq); else paintAssist(); };
+    if (mode === 'live' && c.pill && !c.pillT) c.pillT = setTimeout(() => { c.pill = 0; c.pillT = null; paintAssist(); }, 3500);
+  }
+  async function kbSearch(c, q) { const words = String(q || '').toLowerCase(); const all = S.kbCache || []; c.kres = all.filter((k) => words && `${k.title} ${k.summary} ${k.category}`.toLowerCase().includes(words)); paintAssist(); }
+  function sidePanel(side, rec, t) {
+    const head = (title) => `<div class="side-h">${esc(title)}</div>`;
+    if (side === 'learn') return `${head('Learning')}${(S.kbCache || []).slice(0, 6).map((k) => `<div class="kcard"><div class="kt"><span>${ic('kbdoc', 'sm')}</span><a data-kbopen="${k.id}">${esc(k.title)}</a></div><p>${esc(k.category)}</p></div>`).join('')}`;
+    if (side === 'attach') return `${head('Attachments')}<div class="nomatch"><b>No attachments</b><div>Files added to this interaction appear here.</div></div>`;
+    if (side === 'details') return `${head('Record details')}<div class="ixmeta">${[['Opened', fmtDT(rec.opened)], ['Phone', rec.phone], ['Queue', rec.queue], ['Intent', rec.intent], ['Conversation', rec.conversationId]].map(([k, v]) => `<div><span>${k}</span><b>${esc(v || '-')}</b></div>`).join('')}</div>${t ? `<button class="btn" data-c="opentp" style="margin-top:10px">Open taxpayer record</button>` : ''}`;
+    if (side === 'script') return `${head('Script')}${rec.bot ? botCard(rec.bot) + `<div class="transcript" style="padding:8px 0">${botLines({ ...rec.bot, caller: t?.firstName })}</div>` : '<div class="nomatch"><b>No script</b><div>The Genesys Cloud script for this queue appears here.</div></div>'}`;
+    return `${head('Images')}<div class="nomatch"><b>No images</b></div>`;
+  }
+
+  function paintWrap() {
+    const box = $('#imsWrap'); if (!box) return; const { c } = imsCtx();
+    if (!c || !c.wrap) { box.innerHTML = ''; return; }
+    const w = c.wrap;
+    box.innerHTML = `<div class="wrapdock ${w.big ? 'big' : ''}"><div class="wd-h"><b>Wrap up</b><span data-c="wbig" title="${w.big ? 'Collapse' : 'Expand'}">${ic('expand', 'sm')}</span></div>
+      <div class="wd-b"><label>Wrap up timer</label><div><span class="wtimer wrap-clock" data-c="${c.id}">${clock(Date.now() - w.startedAt)}</span></div>
+      <label>Wrap up code <span class="req">*</span></label><select id="wdCode" class="${w.code ? 'ok' : ''}"><option value="">-- None --</option>${UI().wrapCodes.map((x) => `<option ${w.code === x ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>
+      <label>Notes</label><textarea id="wdNotes" title="Enter a label" placeholder="">${esc(w.notes)}</textarea></div>
+      <div class="wd-f"><button class="btn teal" id="wdOk" ${w.code ? '' : 'disabled'}>Submit &amp; close</button></div></div>`;
+    $('#wdCode').onchange = (e) => { w.code = e.target.value; e.target.classList.toggle('ok', !!w.code); $('#wdOk').disabled = !w.code; };
+    $('#wdNotes').oninput = (e) => { w.notes = e.target.value; };
+    $('#wdOk').onclick = () => submitWrap(c);
+  }
+  function paintToast() {
+    const box = $('#imsToast'); if (!box) return; const { c } = imsCtx();
+    box.innerHTML = c && c.toast ? `<div class="adh">${ic('info', 'sm')}<span>${esc(UI().adherenceText)}</span><span class="x" data-c="toastx" title="Close">${ic('x', 'sm')}</span><i class="adhbar"></i></div>` : '';
+  }
+
+  function hangUp(c) {
+    if (!c || c.phase !== 'active') return;
+    clearTimeout(c.aTimer); c.phase = 'wrapup'; c.endedAt = Date.now(); c.assist = 'feedback'; c.events.push({ at: Date.now(), who: 'system', text: 'Agent has left.' });
+    const t = S.ims[c.id]?.taxpayerId ? S.records[S.ims[c.id].taxpayerId] : null;
+    c.wrap = { startedAt: Date.now(), code: '', notes: t && S.interaction?.outcomes?.length ? S.interaction.outcomes.map((o) => o.text).join('. ') + '.' : '', big: false };
+    S.menu = null; shell(); renderPage();
+  }
+  async function submitWrap(c) {
+    const rec = S.ims[c.id]; const t = rec.taxpayerId ? S.records[rec.taxpayerId] : null;
+    const contact = rec.contact || 'Caller'; const agent = S.user.name;
+    const lines = [];
+    if (rec.bot) rec.bot.transcript.filter((l) => l.who !== 'event').forEach((l) => lines.push({ time: hhmm(Date.parse(rec.bot.date + 'Z') ? c.accepted - 60000 : c.accepted), who: l.who === 'bot' ? rec.bot.botName : contact, text: l.text }));
+    c.events.forEach((e) => lines.push({ time: hhmm(e.at), who: e.who === 'system' ? 'system' : e.who === 'agent' ? agent : contact, text: e.text }));
+    const wrap = c.wrap; c.wrap = null; c.phase = 'unavailable'; c.assist = 'awaiting'; paintWrap(); paintCard(); paintAssist();
+    const feedback = Object.entries(c.votes).map(([kb, vote]) => ({ kb, vote, sent: c.fb[kb] === 'sent' }));
+    const out = await act(() => api(`/api/ims/${c.id}/close`, { method: 'POST', body: { wrapCode: wrap.code, notes: wrap.notes, transcript: lines, feedback, assignedTo: agent, durationSec: Math.floor((c.endedAt - c.connectedAt) / 1000), verified: rec.verified } }));
+    S.ims[c.id] = out; if (S.call === c.id) S.call = null; S.interaction = null;
+    if (t) { await loadTp(t.id, true); S.imsHist && (S.imsHist[t.id] = null); }
+    setTimeout(() => { c.phase = 'closed'; shell(); renderPage(); }, 1300);
+  }
+
+  async function imsClicks(e) {
+    const { rec, c, t } = imsCtx();
+    const dt = e.target.closest('[data-dtmf]'); if (dt) { e.stopPropagation(); c.keypad += dt.dataset.dtmf; $('.keypad .kd').textContent = c.keypad; return; }
+    const side = e.target.closest('[data-side]'); if (side) { S.imsUi.side = S.imsUi.side === side.dataset.side && side.dataset.side !== 'assist' ? 'assist' : side.dataset.side; $$('.ims-rail button').forEach((b) => b.classList.toggle('on', b.dataset.side === S.imsUi.side)); return paintAssist(); }
+    const v = e.target.closest('[data-vote]'); if (v) { e.stopPropagation(); const k = v.dataset.kb; c.votes[k] = c.votes[k] === v.dataset.vote ? undefined : v.dataset.vote; return paintAssist(); }
+    const fb = e.target.closest('[data-fb]'); if (fb) { e.stopPropagation(); c.fb[fb.dataset.kb] = fb.dataset.fb === 'send' ? 'sent' : 'dismissed'; if (fb.dataset.fb === 'send') toast('Feedback sent. Thank you.'); return paintAssist(); }
+    const fs = e.target.closest('[data-fbsel]'); if (fs && !e.target.closest('a')) { c.fbSel = fs.dataset.fbsel; return paintAssist(); }
+    const ko = e.target.closest('[data-kbopen]'); if (ko) { const k = (S.kbCache || []).find((x) => x.id === ko.dataset.kbopen) || await api(`/api/kb/${ko.dataset.kbopen}`); return modal(`${ic('book')} ${esc(k.title)}`, `<div class="small muted">${esc(k.id)} · ${esc(k.category)}</div><p style="line-height:1.55">${esc(k.summary)}</p>${k.body ? `<p style="line-height:1.55">${esc(k.body)}</p>` : ''}${k.url ? `<p><a href="${esc(k.url)}" target="_blank" rel="noopener">${esc(k.url)}</a></p>` : ''}`, `${t ? `<button class="btn" id="kSend">Send to taxpayer</button>` : ''}<button class="btn primary" data-close>Close</button>`, { wide: true }) && t && ($('#kSend').onclick = () => composeModal(t, k.id)); }
+    const hgo = e.target.closest('[data-hgo]'); if (hgo) { const [kind, id] = hgo.dataset.hgo.split(':'); if (kind === 'ims') return go(`#/ims/${id}`); if (kind === 'case') return openCase(id); if (kind === 'notice') return openTaxpayer(t.id, 'notices'); if (kind === 'bot') return tpClicks({ target: Object.assign(document.createElement('span'), { dataset: { a: 'botview', arg: id } }), stopPropagation() {} }, t); }
+    const hf = e.target.closest('[data-hf]'); if (hf) { e.stopPropagation(); S.imsUi.hf = hf.dataset.hf; S.menu = null; return paintHist(); }
+    const h = e.target.closest('[data-h]');
+    if (h) { e.stopPropagation(); const k = h.dataset.h; if (k === 'search') { S.imsUi.hsearch = !S.imsUi.hsearch; if (!S.imsUi.hsearch) S.imsUi.hq = ''; paintHist(); $('#hQ')?.focus(); } if (k === 'filter') { S.menu = S.menu === 'hfilter' ? null : 'hfilter'; paintHist(); } if (k === 'cal') { S.imsUi.h30 = !S.imsUi.h30; paintHist(); } return; }
+    if (e.target.closest('[data-a]')) { if (t) { S.menu = null; tpClicks(e, t); paintHead(); } return; }
+    const b = e.target.closest('[data-c]'); if (!b) { if (S.menu) { S.menu = null; paintCard(); paintHead(); paintHist(); } return; }
+    e.stopPropagation();
+    const k = b.dataset.c;
+    const menuToggle = (m, paint) => { S.menu = S.menu === m ? null : m; paint(); };
+    const acts = {
+      recmenu: () => menuToggle('rec', paintCard), rec: () => { c.rec = !c.rec; S.menu = null; paintCard(); toast(c.rec ? 'Recording resumed' : 'Recording paused'); },
+      mute: () => { c.muted = !c.muted; paintCard(); }, hold: () => { c.held = !c.held; paintCard(); }, keypadmenu: () => menuToggle('keypad', paintCard), flag: () => { c.flagged = !c.flagged; paintCard(); if (c.flagged) toast('Interaction flagged for your supervisor'); },
+      transfer: () => transferModal(c), hangup: () => hangUp(c),
+      toastx: () => { c.toast = false; paintToast(); },
+      summary: () => { c.summaryOpen = !c.summaryOpen; paintAssist(); }, pill: () => { c.pill = 0; $('#imsAssist').scrollTop = 0; paintAssist(); },
+      kclear: () => { c.kq = ''; c.kres = c.assist === 'related' ? [] : null; paintAssist(); },
+      wbig: () => { c.wrap.big = !c.wrap.big; paintWrap(); },
+      collapse: () => { S.imsUi.collapsed = !S.imsUi.collapsed; paintForm(); },
+      more: () => menuToggle('imsmore', paintHead), opentp: () => t && openTaxpayer(t.id), refunds: () => t && openTaxpayer(t.id, 'refunds'),
+      copy: () => { navigator.clipboard?.writeText(rec.number).catch(() => {}); S.menu = null; paintHead(); toast(`${esc(rec.number)} copied`); },
+      save: async () => { await act(() => api(`/api/ims/${rec.id}`, { method: 'PATCH', body: { shortDescription: fieldVal('imsSd') || rec.shortDescription } }), 'Record saved'); rec.shortDescription = fieldVal('imsSd') || rec.shortDescription; paintHead(); },
+      close: () => { if (c && c.phase === 'active') return hangUp(c); if (c && c.wrap) return $('#wdCode')?.focus(); },
+      case: () => t ? caseModalIms(t, rec) : toast('Add a contact first'), incident: () => incidentModal(rec, t), callback: () => callbackModal(rec, t),
+      'info-user': () => { const u = S.users.find((x) => x.name === rec.assignedTo); toast(u ? `${esc(u.name)} · ${esc(u.role)} · ${esc(u.group)}` : esc(rec.assignedTo || 'Unassigned')); },
+      'find-user': () => toast('Assignment is set by Genesys Cloud routing'),
+      'info-account': () => t && previewTp(t), 'info-contact': () => t && previewTp(t),
+      'find-account': () => go('#/list/taxpayers'), 'find-contact': () => go('#/list/taxpayers'),
+    };
+    (acts[k] || (() => {}))();
+  }
+  function previewTp(t) {
+    modal(`${ic('user')} ${esc(t.fullName)}`, `<div class="kv c3"><div><label>TIN</label><div class="v">${esc(t.tin)}</div></div><div><label>Phone</label><div class="v">${esc(t.phones[0]?.number || '')}</div></div><div><label>Email</label><div class="v">${esc(t.email || '-')}</div></div><div><label>Address</label><div class="v">${esc(t.address.line)}, ${esc(t.address.city)}</div></div><div><label>Identity</label><div class="v">${esc(t.identity.status)}</div></div><div><label>Balance</label><div class="v">${money(t.balance)}</div></div></div><div class="flags" style="margin-top:10px">${t.flags.map((f) => `<span class="tag2 blue">${esc(f)}</span>`).join('')}</div>`, `<button class="btn" data-close>Close</button><button class="btn primary" id="pvOpen">Open record</button>`);
+    $('#pvOpen').onclick = () => { closeModal(); openTaxpayer(t.id); };
+  }
+  function transferModal(c) {
+    modal(`${ic('arrow')} Transfer`, `<div class="f"><label>Transfer to</label><select id="xT">${['Taxpayer Services - Notices', 'Individual Income Tax', 'Business Tax', 'Identity Protection', 'Collections', ...S.users.filter((u) => u.id !== S.user.id).map((u) => u.name)].map((x) => `<option>${esc(x)}</option>`).join('')}</select></div><div class="f"><label>Type</label><select id="xK"><option>Blind transfer</option><option>Consult transfer</option></select></div>`, `<button class="btn" data-close>Cancel</button><button class="btn primary" id="xOk">Transfer</button>`);
+    $('#xOk').onclick = () => { const to = fieldVal('xT'); const kind = fieldVal('xK'); closeModal(); if (kind === 'Consult transfer') return toast(`Consulting ${esc(to)}…`); c.events.push({ at: Date.now(), who: 'system', text: `Transferred to ${to}.` }); toast(`Transferred to ${esc(to)}`); hangUp(c); };
+  }
+  function callbackModal(rec, t) {
+    const d = new Date(Date.now() + 864e5); const def = `${d.toISOString().slice(0, 10)}T10:00`;
+    modal(`${ic('phone')} Genesys Schedule Callback`, `<div class="frow"><div class="f"><label>Callback number</label><input id="cbN" value="${esc(rec.phone)}"></div><div class="f"><label>Date and time</label><input id="cbD" type="datetime-local" value="${def}"></div></div><div class="f"><label>Queue</label><input id="cbQ" value="${esc(rec.queue || 'Individual Income Tax')}"></div><div class="f"><label>Notes</label><textarea id="cbX"></textarea></div>`, `<button class="btn" data-close>Cancel</button><button class="btn primary" id="cbOk">Schedule</button>`);
+    $('#cbOk').onclick = async () => { if (t) await api(`/api/taxpayers/${t.id}/activities`, { method: 'POST', body: { type: 'Callback', direction: 'Outbound', subject: `Callback scheduled for ${fmtDT(fieldVal('cbD'))}`, text: `${fieldVal('cbN')} · ${fieldVal('cbQ')}. ${fieldVal('cbX')}`, by: S.user.name } }); closeModal(); toast(`Callback scheduled in Genesys Cloud for ${esc(fmtDT(fieldVal('cbD')))}`); if (t) outcome(t, `Scheduled a callback for ${fmtDT(fieldVal('cbD'))}`); };
+  }
+  function incidentModal(rec, t) {
+    modal(`${ic('wrench')} Create Incident`, `<div class="f"><label>Short description</label><input id="inS" value="${esc(rec.shortDescription)}"></div><div class="frow"><div class="f"><label>Category</label><select id="inC"><option>Inquiry / Help</option><option>Online services</option><option>Payment processing</option><option>Correspondence</option></select></div><div class="f"><label>Priority</label><select id="inP"><option>2 - High</option><option>3 - Moderate</option><option selected>4 - Low</option></select></div></div><div class="f"><label>Description</label><textarea id="inD"></textarea></div>`, `<button class="btn" data-close>Cancel</button><button class="btn primary" id="inOk">Submit</button>`);
+    $('#inOk').onclick = async () => { const inc = await act(() => api('/api/incidents', { method: 'POST', body: { taxpayerId: t?.id || '', shortDescription: fieldVal('inS'), category: fieldVal('inC'), priority: fieldVal('inP'), by: S.user.name, ims: rec.number } })); closeModal(); toast(`Incident ${esc(inc.id)} created`); if (t) outcome(t, `Created incident ${inc.id}`); };
+  }
+  async function caseModalIms(t, rec) {
+    await caseModal(t, `General inquiry|${rec.shortDescription}`);
+    const ok = $('#cOk'); if (!ok) return; const orig = ok.onclick;
+    ok.onclick = async () => {
+      const c = await act(() => api('/api/cases', { method: 'POST', body: { taxpayerId: t.id, shortDescription: fieldVal('cSd') || fieldVal('cSub'), category: fieldVal('cCat'), subcategory: fieldVal('cSub'), priority: fieldVal('cP'), group: fieldVal('cG'), assignedTo: S.user.name, channel: rec.type, note: fieldVal('cN'), by: S.user.name } }));
+      S.ims[rec.id] = await api(`/api/ims/${rec.id}`, { method: 'PATCH', body: { caseNumber: c.number } });
+      outcome(t, `Opened case ${c.number}`); closeModal(); toast(`Case ${esc(c.number)} created`); await loadTp(t.id, true); paintForm(); paintHist();
+      void orig;
+    };
+  }
+
   // ---------------------------------------------------------------- screen pop handling
   async function handlePop(params, source = 'url') {
     const g = (k) => clean(params.get ? params.get(k) : params[k]);
@@ -896,9 +1231,15 @@
     ix.matchedOn = matchedOn;
     const tab = g('tab') || (/pay|plan|balance|bill/i.test(ix.intent) ? 'balances' : /refund/i.test(ix.intent) ? 'overview' : /notice|letter/i.test(ix.intent) ? 'notices' : 'overview');
     if (phone || conversationId || matches.length) S.interaction = ix;
-    if (matches.length === 1) { ix.taxpayerId = matches[0].id; const t = await loadTp(matches[0].id, true); if (script(t, ix)) ix.ltab = 'transcript'; advanceTranscript(t); return openTaxpayer(t.id, tab); }
-    S.popResult = { matches, ix, tab }; go('#/pop-results');
+    const v3 = (g('view') || S.settings.popView || 'interaction') !== 'taxpayer' && ix.mediaType === 'voice';
+    if (matches.length === 1) {
+      ix.taxpayerId = matches[0].id; const t = await loadTp(matches[0].id, true);
+      if (v3) { note(ix, t.fullName); return openCall(ix, g('imsId')); }
+      if (script(t, ix)) ix.ltab = 'transcript'; advanceTranscript(t); return openTaxpayer(t.id, tab);
+    }
+    S.popResult = { matches, ix, tab, v3, imsId: g('imsId') }; go('#/pop-results');
   }
+  function note(ix, name) { S.notes = S.notes || []; S.notes.unshift({ text: `${ix.mediaType === 'voice' ? 'Call' : 'Chat'} from ${name || ix.phone || 'caller'}${ix.queue ? ` · ${ix.queue}` : ''}`, when: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }), go: ix.imsId ? `#/ims/${ix.imsId}` : '#/genesys' }); }
   function pagePopResults(el) {
     const r = S.popResult; if (!r) return go('#/home');
     const ix = r.ix;
@@ -907,7 +1248,7 @@
         ${r.matches.map((p) => `<div class="match-card" data-pick="${p.id}">${avatar(p.fullName, 'lg', p.id)}<div style="flex:1"><b>${esc(p.fullName)}</b><div class="small">${esc(p.type)} · TIN ${esc(p.tin)} · ${esc(p.city)}</div>${p.flags?.length ? `<div class="small amber">${esc(p.flags.join(' · '))}</div>` : ''}</div><button class="btn primary">Select</button></div>`).join('')}`
       : `<h2 style="margin:6px 0">No taxpayer found for ${esc(ix.matchedOn || 'this interaction')}</h2><p class="muted" style="margin-top:0">Search by name, SSN last 4 or return ID, or create a new contact.</p>
         <div style="display:flex;gap:8px"><button class="btn primary" data-go="#/register${ix.phone ? `?phone=${encodeURIComponent(ix.phone)}` : ''}">New contact</button><button class="btn" data-go="#/list/taxpayers">Browse taxpayers</button></div>`}</div>`;
-    el.onclick = async (e) => { const p = e.target.closest('[data-pick]'); if (p) { S.interaction && (S.interaction.taxpayerId = p.dataset.pick); const t = await loadTp(p.dataset.pick, true); advanceTranscript(t); return openTaxpayer(p.dataset.pick, r.tab); } };
+    el.onclick = async (e) => { const p = e.target.closest('[data-pick]'); if (p) { S.interaction && (S.interaction.taxpayerId = p.dataset.pick); const t = await loadTp(p.dataset.pick, true); if (r.v3 && S.interaction) { if (r.imsId) await api(`/api/ims/${r.imsId}`, { method: 'PATCH', body: { taxpayerId: t.id, account: t.businessName || t.fullName, contact: t.fullName } }); return openCall(S.interaction, r.imsId); } advanceTranscript(t); return openTaxpayer(p.dataset.pick, r.tab); } };
   }
 
   function connectSSE() {
@@ -922,7 +1263,9 @@
       const params = { phone: pop.phone, conversationId: pop.conversationId, direction: pop.direction, queue: pop.queue, mediaType: pop.mediaType, intent: pop.intent, customerName: pop.customerName, tab: pop.tab, ...(pop.taxpayerIds.length === 1 ? { taxpayerId: pop.taxpayerIds[0] } : {}) };
       const names = await Promise.all(pop.taxpayerIds.slice(0, 3).map((id) => loadTp(id).then((c) => c.fullName).catch(() => id)));
       if (S.settings.ringInbox && !S.embed) {
-        S.inbox.push({ id: pop.id, name: names.length === 1 ? names[0] : names.length ? `${names.length} possible matches` : (pop.customerName || 'Unknown caller'), phone: pop.phone, queue: pop.queue, intent: pop.intent, mediaType: pop.mediaType, remaining: 30, params });
+        const ims = await api('/api/ims', { method: 'POST', body: { taxpayerId: params.taxpayerId || '', phone: pop.phone, conversationId: pop.conversationId, queue: pop.queue, intent: pop.intent, mediaType: pop.mediaType, botSessionId: pop.botSessionId || '', customerName: pop.customerName, assignedTo: S.user.name } }).catch(() => null);
+        if (ims) params.imsId = ims.id;
+        S.inbox.push({ id: pop.id, imsNumber: ims ? ims.number : '', name: names.length === 1 ? names[0] : names.length ? `${names.length} possible matches` : (pop.customerName || 'Unknown caller'), phone: pop.phone, queue: pop.queue, intent: pop.intent, mediaType: pop.mediaType, remaining: (S.brand.ui && S.brand.ui.acceptSeconds) || 55, params });
         S.inboxOpen = true; render();
       } else if (S.settings.autoPop) { toast(`<b>Screen pop: ${esc(pop.phone || 'interaction')}</b><div class="small">${names.length ? esc(names.join(', ')) : 'No matching taxpayer'}${pop.queue ? ` · ${esc(pop.queue)}` : ''}</div>`, { cls: 'genesys', ms: 5000 }); handlePop(params, 'push'); }
       else toast(`<b>Incoming ${pop.mediaType === 'voice' ? 'call' : esc(pop.mediaType)}: ${esc(pop.phone)}</b><div class="small">${names.length ? esc(names.join(', ')) : 'No matching taxpayer'}</div><div class="actions"><button class="btn sm primary" data-act="open">Open</button><button class="btn sm" data-act="dismiss">Dismiss</button></div>`, { cls: 'genesys', sticky: true, on: (a) => { if (a === 'open') handlePop(params, 'push'); } });
@@ -931,8 +1274,10 @@
 
   // ---------------------------------------------------------------- boot
   function applyTheme(b) {
-    const t = b.theme || {}; const r = document.documentElement.style;
-    [['--nav', t.nav], ['--nav-text', t.navText], ['--accent', t.accent], ['--accent-soft', t.accentSoft], ['--hl', t.highlight], ['--rail-top', t.railTop], ['--rail-bottom', t.railBottom]].forEach(([k, v]) => v && r.setProperty(k, v));
+    const pal = S.settings.palette || (b.ui && b.ui.palette) || 'workspace';
+    document.body.classList.toggle('brand-palette', pal === 'brand');
+    const t = pal === 'brand' ? (b.theme || {}) : {}; const r = document.documentElement.style;
+    [['--nav', t.nav], ['--nav-text', t.navText], ['--accent', t.accent], ['--accent-soft', t.accentSoft], ['--hl', t.highlight], ['--rail-top', t.railTop], ['--rail-mid', t.railTop], ['--rail-bottom', t.railBottom]].forEach(([k, v]) => (v ? r.setProperty(k, v) : r.removeProperty(k)));
     document.title = `${b.shortName || b.agency} | ${b.workspaceName || 'Workspace'}`;
   }
   async function boot() {

@@ -9,6 +9,28 @@ node server.js          # http://localhost:8080
 PORT=3000 node server.js
 ```
 
+## Version 3: the interaction screen
+
+Version 3 uses the CSM/FSM Configurable Workspace recording as its template. When a call is accepted, the workspace opens an interaction record (IMS number) laid out like the recording:
+- On the left, the call card and Customer History.
+- In the middle, the Interaction form.
+- On the right, Agent Assist and the utility rail.
+
+Every click from the recording works:
+- **Inbox:** Accept or Reject.
+- **Call card:** the call controls, then hang-up.
+- **Agent Assist:** knowledge suggestions with thumbs, and article feedback after the call.
+- **Wrap up:** the wrap up code, then Submit & close. That writes the internal transcript and adds the call to Customer History.
+
+Typical demo:
+1. Open the phone icon in the top bar and click **Send transfer + screen pop**, or have Genesys Cloud push the pop.
+2. Click **Accept** in the inbox.
+3. Agent Assist lines appear every few seconds. Press `]` to show the next one now.
+4. Use the more menu (⋯) to verify identity or apply the suspense payment.
+5. Hang up, pick a wrap up code, then click **Submit & close**.
+
+The text on these screens comes from the brand's `ui` block in `lib/brands.js` and from `lib/assist.js`. To see the v2 taxpayer screen instead, set Settings > Screen pops open, or add `view=taxpayer` to a pop URL.
+
 ## What works
 
 - **Sign in** as a persona: Richie Barnes (Taxpayer Services Agent), Dana Whitfield (Business Tax Specialist) or Morgan Lee (Supervisor).
@@ -112,6 +134,12 @@ Agencies live in [`lib/brands.js`](lib/brands.js):
 - Area codes and cities used in the seed data.
 - Logo, with a text wordmark fallback.
 - Colors.
+- `ui`: the v3 screen text.
+  - Record title ("Agent Needed") and the inbox accept countdown.
+  - The adherence toast, which can be turned off.
+  - Presence states and wrap up codes.
+  - Agent Assist speed and the Transfer Summary wording.
+  - `palette`: `workspace` uses the template colors (the default), and `brand` uses the colors above.
 
 To add one, copy a block, change the values and redeploy. Then pick it in Settings > Brand, with `?brand=<id>`, or with the `BRAND` env var. Switching reseeds the data with that agency's names. The Ohio colors are approximations of tax.ohio.gov, and the logo is loaded from tax.ohio.gov with a text fallback.
 
