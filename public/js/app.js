@@ -236,6 +236,7 @@
       <div class="frow"><div class="f"><label>Screen pops open</label><select id="sView"><option value="interaction" ${S.settings.popView !== 'taxpayer' ? 'selected' : ''}>The interaction record (v3 workspace)</option><option value="taxpayer" ${S.settings.popView === 'taxpayer' ? 'selected' : ''}>The taxpayer record (v2 layout)</option></select></div>
       <div class="f"><label>Color scheme</label><select id="sPal"><option value="" ${!S.settings.palette ? 'selected' : ''}>Brand default (${esc((S.brand.ui && S.brand.ui.palette) || 'workspace')})</option><option value="workspace" ${S.settings.palette === 'workspace' ? 'selected' : ''}>Workspace template colors</option><option value="brand" ${S.settings.palette === 'brand' ? 'selected' : ''}>Brand colors</option></select></div></div>
       <div class="f"><label>Brand (switching reloads the demo data with that agency's names)</label><select id="sBrand">${(S.config.brands || []).map((b) => `<option value="${b.id}" ${b.id === S.brand.id ? 'selected' : ''}>${esc(b.agency)}</option>`).join('')}</select></div>
+      <p class="small"><a href="#" id="sSaved">Saved taxpayers (${localSaved().length})</a>: taxpayers you add are kept after restarts and redeploys. Export or import them here.</p>
       <p class="small muted">Version <b>${esc(S.config.version || '')}</b> (build ${esc(S.config.commit || '')}) · <a href="#" id="sNotes">Release notes</a></p>
       <p class="small muted">Retail version of the demo (Haven &amp; Hill guided story): <a href="/retail/" target="_blank">/retail/</a> · <a href="/api-docs.html" target="_blank">API reference</a></p>`,
       `<button class="btn danger left" id="sReset">Reset demo data</button><button class="btn" id="sOut">Switch user</button><button class="btn primary" id="sSave">Save</button>`);
@@ -245,8 +246,46 @@
       connectSSE(); closeModal(); render();
     };
     $('#sNotes').onclick = (e) => { e.preventDefault(); releaseNotes(); };
+    $('#sSaved').onclick = (e) => { e.preventDefault(); savedModal(); };
     $('#sOut').onclick = () => { S.user = null; store.set('user', null); closeModal(); render(); };
     $('#sReset').onclick = async () => { await api('/api/admin/reset', { method: 'POST' }); S.records = {}; S.tabs = []; saveTabs(); S.interaction = null; S.aiLog = []; S.calls = {}; S.ims = {}; S.call = null; S.imsHist = {}; closeModal(); toast('Demo data reset'); go('#/home'); };
+  }
+
+  // Saved taxpayers: the server keeps them in a file; this browser keeps a copy too and re-sends any the server lost
+  // (for example after a redeploy on Render's free plan, which has no persistent disk).
+  const localSaved = () => store.get('savedTaxpayers', []);
+  async function syncSaved() {
+    try {
+      const srv = await api('/api/custom-taxpayers');
+      const mine = localSaved(); const byId = new Map(mine.map((t) => [t.id, t]));
+      srv.taxpayers.forEach((t) => byId.set(t.id, t));
+      const missing = mine.filter((t) => !srv.taxpayers.some((x) => x.id === t.id) && !(S.deletedTps || []).includes(t.id));
+      if (missing.length) await api('/api/custom-taxpayers', { method: 'POST', body: { taxpayers: missing } });
+      S.savedInfo = srv.storage; store.set('savedTaxpayers', [...byId.values()].filter((t) => !(S.deletedTps || []).includes(t.id)));
+      return missing.length;
+    } catch { return 0; }
+  }
+  function savedModal() {
+    const list = localSaved(); const info = S.savedInfo || {};
+    modal(`${ic('user')} Saved taxpayers (${list.length})`, `<p class="small muted" style="margin-top:0">Taxpayers you add are saved on the server${info.persistentDisk ? ' (persistent disk)' : ''} and in this browser, so they come back after restarts, redeploys and Reset demo data. Export a file to use them in another browser, or commit it to the repo as <code>data/custom-taxpayers.json</code> to make them permanent for everyone.</p>
+      ${list.length ? `<table class="tbl"><tr><th>Name</th><th>Phone</th><th>ID</th><th></th></tr>${list.map((t) => `<tr><td>${esc(t.businessName || `${t.firstName} ${t.lastName}`)}</td><td>${esc((t.phones[0] || {}).number || '')}</td><td class="small">${esc(t.id)}</td><td class="nowrap"><button class="btn sm" data-sv-open="${t.id}">Open</button> <button class="btn sm danger" data-sv-del="${t.id}">Delete</button></td></tr>`).join('')}</table>` : '<div class="empty">No saved taxpayers yet. Use New contact to add one.</div>'}
+      <input type="file" id="svFile" accept=".json,application/json" style="display:none">`,
+      `<button class="btn left" id="svImp">Import</button><button class="btn" id="svExp" ${list.length ? '' : 'disabled'}>Export</button><button class="btn" id="svNew">New contact</button><button class="btn primary" data-close>Close</button>`, { wide: true });
+    $('#svExp').onclick = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify({ taxpayers: localSaved() }, null, 2)], { type: 'application/json' })); a.download = 'custom-taxpayers.json'; a.click(); };
+    $('#svNew').onclick = () => { closeModal(); go('#/register'); };
+    $('#svImp').onclick = () => $('#svFile').click();
+    $('#svFile').onchange = async (e) => {
+      const f = e.target.files[0]; if (!f) return;
+      try { const j = JSON.parse(await f.text()); const list = Array.isArray(j) ? j : j.taxpayers || []; S.deletedTps = (S.deletedTps || []).filter((id) => !list.some((x) => x.id === id)); const r = await api('/api/custom-taxpayers', { method: 'POST', body: { taxpayers: list } }); await syncSaved(); toast(`Imported ${r.added} new taxpayer${r.added === 1 ? '' : 's'}`); savedModal(); } catch (err) { toast(`Import failed: ${esc(err.message)}`, { cls: 'genesys' }); }
+    };
+    $('#modal').addEventListener('click', async (e) => {
+      const o = e.target.closest('[data-sv-open]'); if (o) { closeModal(); return openTaxpayer(o.dataset.svOpen); }
+      const d = e.target.closest('[data-sv-del]'); if (!d) return;
+      if (!confirm('Delete this saved taxpayer? This removes it from the server and this browser.')) return;
+      await api(`/api/taxpayers/${d.dataset.svDel}`, { method: 'DELETE' }).catch(() => {});
+      S.deletedTps = [...(S.deletedTps || []), d.dataset.svDel]; store.set('savedTaxpayers', localSaved().filter((t) => t.id !== d.dataset.svDel));
+      S.tabs = S.tabs.filter((t) => t.id !== d.dataset.svDel); saveTabs(); delete S.records[d.dataset.svDel]; toast('Taxpayer deleted'); savedModal();
+    });
   }
 
   async function releaseNotes() {
@@ -838,6 +877,7 @@
     $('#nOk').onclick = async () => {
       const t = await act(() => api('/api/taxpayers', { method: 'POST', body: { firstName: fieldVal('nF'), lastName: fieldVal('nL'), dob: fieldVal('nD'), last4: fieldVal('nS'), phone: fieldVal('nP'), email: fieldVal('nE'), language: fieldVal('nLg'), addressLine: fieldVal('nA'), city: fieldVal('nC'), zip: fieldVal('nZ') } }), 'Contact created');
       if (S.interaction && !S.interaction.taxpayerId) S.interaction.taxpayerId = t.id;
+      await syncSaved(); toast(`${esc(t.fullName)} saved for future demos`);
       openTaxpayer(t.id);
     };
   }
@@ -1304,6 +1344,7 @@
       applyTheme(config.brand);
       if (S.user && !users.some((u) => u.id === S.user.id && u.email === S.user.email)) { S.user = users.find((u) => u.id === S.user.id) || null; store.set('user', S.user); }
     } catch (e) { $('#root').innerHTML = `<div style="padding:40px">Cannot reach the workspace server: ${esc(e.message)}</div>`; return; }
+    const restored = await syncSaved(); if (restored) toast(`Restored ${restored} saved taxpayer${restored === 1 ? '' : 's'}`);
     await Promise.all(S.tabs.filter((t) => t.kind === 'tp').map((t) => loadTp(t.id).catch(() => { S.tabs = S.tabs.filter((x) => x !== t); })));
     const isPop = location.pathname.replace(/\/$/, '') === '/pop' || ['phone', 'ani', 'taxpayerId', 'returnId', 'conversationId', 'gcConversationId'].some((k) => clean(qp.get(k)));
     if (isPop && !S.user) { S.user = S.users.find((u) => u.persona === (qp.get('persona') || 'agent')) || S.users[0]; store.set('user', S.user); }

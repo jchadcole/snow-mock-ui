@@ -2,6 +2,24 @@
 
 All notable changes to the SNOW Mock UI. Versions follow [semantic versioning](https://semver.org): MAJOR for a rebuild or breaking change to URLs, APIs or data actions; MINOR for new screens, scenarios or brands; PATCH for fixes. Each release is tagged `vX.Y.Z` in git.
 
+## 3.2.0 (2026-11-06)
+
+### Added
+- **Saved taxpayers.** Taxpayers you add with New contact, `POST /api/taxpayers` or Import are kept after:
+  - server restarts and redeploys;
+  - the daily reseed;
+  - Reset demo data.
+- Where they are stored:
+  - on the server, in `$DATA_DIR/saved-taxpayers.json` (default `./data`);
+  - in the browser, which sends back any the server lost. That covers Render's free plan, which has no disk;
+  - optionally in the repo, as `data/custom-taxpayers.json`.
+- Settings > **Saved taxpayers** lists them, with Open, Delete, Export (a JSON file) and Import.
+- APIs: `GET /api/custom-taxpayers` (export and storage info), `POST /api/custom-taxpayers` (import), and `DELETE /api/taxpayers/{id}` (only for taxpayers you added). `/api/health` reports the storage.
+
+### Changed
+- New taxpayer IDs are now stable (`tp-c…`), so a saved taxpayer keeps the same ID after a restart.
+- Saving a profile change (address, phones, email, name) on a saved taxpayer updates the saved copy. Demo actions such as payments and identity checks still reset with the demo data.
+
 ## 3.1.0 (2026-11-06)
 
 ### Changed

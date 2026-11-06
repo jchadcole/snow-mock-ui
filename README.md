@@ -143,6 +143,17 @@ Agencies live in [`lib/brands.js`](lib/brands.js):
 
 To add one, copy a block, change the values and redeploy. Then pick it in Settings > Brand, with `?brand=<id>`, or with the `BRAND` env var. Switching reseeds the data with that agency's names. The Ohio colors are approximations of tax.ohio.gov, and the logo is loaded from tax.ohio.gov with a text fallback.
 
+## Saved taxpayers
+
+Taxpayers you add (New contact, `POST /api/taxpayers`, or Settings > Saved taxpayers > Import) are saved. They come back after restarts, redeploys, the daily reseed and Reset demo data.
+
+They are stored in three places:
+- **Server:** `$DATA_DIR/saved-taxpayers.json` (default `./data`).
+  - On Render's free plan, this file only lasts until the next restart or deploy.
+  - To keep it on the server itself, use a paid instance with a persistent disk mounted at, for example, `/var/data`, and set `DATA_DIR=/var/data`.
+- **Browser:** the workspace keeps a copy and sends back any taxpayers the server lost. So on the free plan they reappear as soon as you open the site in that browser.
+- **Repo (permanent, every browser):** export from Settings > Saved taxpayers > Export, then commit the file as `data/custom-taxpayers.json`.
+
 ## Versioning
 
 The version lives in `package.json` and follows semantic versioning. Release notes are in [`CHANGELOG.md`](CHANGELOG.md), and each release is tagged `vX.Y.Z`.

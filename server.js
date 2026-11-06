@@ -11,6 +11,7 @@ const { getBrand, listBrands } = require('./lib/brands');
 const { scenarios } = require('./lib/scenarios');
 const { assistScript } = require('./lib/assist');
 const { ensureNoticeStory } = require('./lib/facts');
+const store = require('./lib/store');
 
 // ---------- version ----------
 // The release version lives in package.json (semantic versioning; history in CHANGELOG.md, git tags vX.Y.Z).
@@ -34,6 +35,11 @@ let brandId = process.env.BRAND || 'ohiotax';
 // DEMO_PHONES adds a real caller ID (e.g. the presenter's mobile) to a demo taxpayer. Comma-separated, either form:
 //   6145551234=tp-1001          (your number = taxpayer ID)
 //   6145550184:+16145551234     (seeded demo number : your number)
+function normalizeTp(t) {
+  const base = { type: 'Individual', firstName: '', lastName: '', businessName: '', tin: 'Not provided', dob: '', phones: [], email: '', address: { line: '', city: '', state: '', zip: '', county: '' }, language: 'English', flags: [], identity: { status: 'Not verified', method: '', date: null }, bank: null, representative: null, portalEnrolled: false, returns: [], assessments: [], payments: [], paymentPlan: null, notices: [], unapplied: [], activities: [], filingStatus: '', preferredContact: 'Phone', accounts: [] };
+  return { ...base, ...t, address: { ...base.address, ...(t.address || {}) }, identity: { ...base.identity, ...(t.identity || {}) }, custom: true };
+}
+const customId = () => `tp-c${Date.now().toString(36).slice(-6)}${Math.floor(Math.random() * 36).toString(36)}`;
 function freshDb() {
   const brand = getBrand(brandId);
   const d = seed(brand, new Date());
@@ -43,6 +49,8 @@ function freshDb() {
     else { const [seeded, n] = pair.split(':').map((x) => x.trim()); num = n; const k = String(seeded || '').replace(/\D/g, '').slice(-10); t = k && d.taxpayers.find((x) => x.phones.some((p) => p.number.replace(/\D/g, '').endsWith(k))); }
     if (t && num) { t.phones.forEach((x) => { x.primary = false; }); t.phones.unshift({ type: 'Mobile (demo)', number: fmtPhone(num), primary: true }); }
   }
+  // Taxpayers added in the workspace are saved (lib/store.js) and come back after every reseed, restart and deploy.
+  for (const c of store.all()) if (!d.taxpayers.some((x) => x.id === c.id)) d.taxpayers.push(normalizeTp(c));
   d.botSessions = [];
   d.incidents = [];
   // Interaction (IMS) records behind the v3 workspace. Past inbound calls become closed interactions for Customer History.
@@ -214,7 +222,7 @@ const needTp = (id) => { const t = getTp(id); if (!t) throw nf(); return t; };
 
 route('GET', '/api/version', () => versionInfo());
 route('GET', '/api/changelog', () => ({ version: VERSION, markdown: fs.existsSync(path.join(__dirname, 'CHANGELOG.md')) ? fs.readFileSync(path.join(__dirname, 'CHANGELOG.md'), 'utf8') : '' }));
-route('GET', '/api/health', () => ({ status: 'ok', version: VERSION, commit: COMMIT, brand: brandId, seededOn: db.seededOn, time: nowLocal(), taxpayers: db.taxpayers.length, genesysLookup: !!GENESYS.clientId, frameAncestors: FRAME_ANCESTORS }));
+route('GET', '/api/health', () => ({ status: 'ok', version: VERSION, commit: COMMIT, savedTaxpayers: store.storeInfo(), brand: brandId, seededOn: db.seededOn, time: nowLocal(), taxpayers: db.taxpayers.length, genesysLookup: !!GENESYS.clientId, frameAncestors: FRAME_ANCESTORS }));
 route('GET', '/api/config', (req) => ({ version: VERSION, commit: COMMIT, baseUrl: baseUrl(req), brand: db.brand, brands: listBrands(), today: todayInTz(), now: nowLocal(), taxYear: db.taxYear, groups: db.groups, genesysLookup: !!GENESYS.clientId, apiKeyRequired: !!API_KEY }));
 route('GET', '/api/brands', () => listBrands());
 route('GET', '/api/users', () => db.users);
@@ -229,19 +237,36 @@ route('POST', '/api/taxpayers', async (req) => {
   const b = await readBody(req);
   if (!b.lastName && !b.businessName) throw bad('lastName or businessName is required');
   const t = {
-    id: newId('tp'), type: b.businessName ? 'Business' : 'Individual', firstName: b.firstName || b.businessName || '', lastName: b.lastName || '', businessName: b.businessName || '', tin: b.last4 ? `***-**-${digits(b.last4).slice(-4)}` : 'Not provided', dob: b.dob || '',
+    id: customId(), custom: true, type: b.businessName ? 'Business' : 'Individual', firstName: b.firstName || b.businessName || '', lastName: b.lastName || '', businessName: b.businessName || '', tin: b.last4 ? `***-**-${digits(b.last4).slice(-4)}` : 'Not provided', dob: b.dob || '',
     phones: b.phone ? [{ type: 'Mobile', number: fmtPhone(b.phone), primary: true }] : [], email: b.email || '', address: { line: b.addressLine || '', city: b.city || '', state: db.brand.stateAbbr, zip: b.zip || '', county: '' },
     language: b.language || 'English', flags: ['New contact'], identity: { status: 'Not verified', method: '', date: null }, bank: null, representative: null, portalEnrolled: false,
     returns: [], assessments: [], payments: [], paymentPlan: null, notices: [], activities: [], filingStatus: '', preferredContact: 'Phone', accounts: [],
   };
-  db.taxpayers.push(t); return created(fullRecord(t));
+  db.taxpayers.push(t); store.upsert(t); return created(fullRecord(t));
 });
 route('GET', '/api/taxpayers/:id', (req, url, { id }) => fullRecord(needTp(id)));
+// Saved (custom) taxpayers: list/export, import (the browser re-sends any the server lost), delete.
+route('GET', '/api/custom-taxpayers', () => ({ storage: store.storeInfo(), taxpayers: store.all() }));
+route('POST', '/api/custom-taxpayers', async (req) => {
+  const b = await readBody(req); const list = Array.isArray(b) ? b : (b.taxpayers || []); let added = 0;
+  for (const raw of list) {
+    if (!raw || !raw.id || !/^tp-/.test(raw.id) || (!raw.lastName && !raw.businessName)) continue;
+    const t = normalizeTp(raw); store.upsert(t);
+    const i = db.taxpayers.findIndex((x) => x.id === t.id); if (i < 0) { db.taxpayers.push(t); added++; }
+  }
+  return { added, storage: store.storeInfo(), taxpayers: store.all().map((x) => x.id) };
+});
+route('DELETE', '/api/taxpayers/:id', (req, url, { id }) => {
+  const t = needTp(id); if (!t.custom) throw bad('Only taxpayers you added can be deleted');
+  store.remove(id); db.taxpayers = db.taxpayers.filter((x) => x.id !== id); return { deleted: id };
+});
 route('PATCH', '/api/taxpayers/:id', async (req, url, { id }) => {
   const t = needTp(id); const b = await readBody(req);
   if (b.address) { t.previousAddress = t.address; t.address = { ...t.address, ...b.address }; activity(t, { type: 'Account update', direction: 'Internal', by: b.by || 'Agent', subject: 'Mailing address updated', text: `${t.address.line}, ${t.address.city}, ${t.address.state} ${t.address.zip}` }); }
   for (const k of ['email', 'preferredContact', 'language', 'portalEnrolled']) if (b[k] !== undefined) t[k] = b[k];
   if (b.phones) t.phones = b.phones.map((x) => ({ ...x, number: fmtPhone(x.number) }));
+  for (const k of ['firstName', 'lastName', 'businessName', 'dob']) if (t.custom && b[k] !== undefined) t[k] = b[k];
+  if (t.custom) store.upsert(t);
   return fullRecord(t);
 });
 route('POST', '/api/taxpayers/:id/identity', async (req, url, { id }) => {

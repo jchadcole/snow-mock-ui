@@ -14,5 +14,6 @@ services:
       - key: API_KEY
         generateValue: true
       # Who may iframe the app. "*" works with every Genesys Cloud region; tighten later if needed.
+      # Saved taxpayers: on a paid plan, add a disk (mountPath /var/data) and set DATA_DIR=/var/data to keep them on the server.
       - key: FRAME_ANCESTORS
         value: "*"
