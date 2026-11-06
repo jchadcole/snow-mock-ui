@@ -31,6 +31,17 @@ Typical demo:
 
 All caller-specific text (names, notice numbers, amounts, dates, the Pilot transcript and Agent Assist lines) is worded from the selected taxpayer's record. On the Genesys page, pick the **Caller** in the Pilot card to run either scenario for any taxpayer. The remaining screen text comes from the brand's `ui` block in `lib/brands.js` and from `lib/assist.js`. To see the v2 taxpayer screen instead, set Settings > Screen pops open, or add `view=taxpayer` to a pop URL.
 
+## Genesys Copilot panel
+
+The left column of the interaction screen follows the "Genesys Copilot" recording (Settings > Agent assistance lets you switch back to the ServiceNow Agent Assist panel on the right):
+- **Copilot tab:** Search knowledge, a **Review checklists** list, one **Generated Answer** card per caller question (with Sources, thumbs, and the ⓘ), the **Transfer Summary** from Pilot, and a **Transcription** footer that expands.
+- **After hang-up:** a **Wrap-up Codes** tab (After call work, AI Powered suggestions, wrap-up code list, a generated Summary, ratings, the ACW timer and **Done**). Done closes the interaction like Submit & close did.
+- **Customer tab:** Customer History, as before.
+
+Everything you can click works: search (with Clear and "No matches found"), checklist items and the ⓘ, thumbs, source links (open the article), the panel expand and close icons, the wrap-up code list and suggested chips, the Summary (editable, with copy), and the ratings (with "Feedback submitted" and undo).
+
+**Different words for different demos:** open Settings > **Demo text**. You can change the Copilot labels, the checklists, the wrap-up codes, the wrap-up summary wording per topic, and the Transfer Summary text. Changes are saved on the server (`$DATA_DIR/ui-text.json`) and in the browser, and can be exported and committed as `data/demo-text.json`. The defaults live in `lib/brands.js` under `ui.copilot`, so a brand can ship its own wording. The API is `GET/PUT/DELETE /api/ui-text`.
+
 ## What works
 
 - **Sign in** as a persona: Richie Barnes (Taxpayer Services Agent), Dana Whitfield (Business Tax Specialist) or Morgan Lee (Supervisor).

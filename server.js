@@ -7,9 +7,9 @@ const fs = require('fs');
 const path = require('path');
 const { URL } = require('url');
 const { seed } = require('./lib/seed');
-const { getBrand, listBrands } = require('./lib/brands');
+const { getBrand, listBrands, merge } = require('./lib/brands');
 const { scenarios } = require('./lib/scenarios');
-const { assistScript } = require('./lib/assist');
+const { assistScript, wrapContent } = require('./lib/assist');
 const { ensureNoticeStory } = require('./lib/facts');
 const store = require('./lib/store');
 
@@ -43,6 +43,8 @@ const customId = () => `tp-c${Date.now().toString(36).slice(-6)}${Math.floor(Mat
 function freshDb() {
   const brand = getBrand(brandId);
   const d = seed(brand, new Date());
+  // Demo text saved with Settings > Demo text (lib/store.js) is laid over the brand's ui block.
+  d.brand = { ...d.brand, ui: merge(d.brand.ui || {}, store.getUi()) };
   for (const pair of (process.env.DEMO_PHONES || '').split(',').map((x) => x.trim()).filter(Boolean)) {
     let num, t;
     if (pair.includes('=')) { const [n, tid] = pair.split('=').map((x) => x.trim()); num = n; t = d.taxpayers.find((x) => x.id === tid); }
@@ -413,6 +415,20 @@ route('POST', '/api/ims/:id/close', async (req, url, { id }) => {
 route('GET', '/api/assist', (req, url) => {
   const p = Object.fromEntries(url.searchParams);
   return assistScript(p.scenario, getTp(p.taxpayerId), db.brand, db.taxYear).map((l) => { const k = l.kb && db.kb.find((a) => a.id === l.kb); return { ...l, article: k ? { id: k.id, title: k.title, text: `${k.summary}${k.body ? ' ' + k.body : ''}` } : null }; });
+});
+// Demo text: the brand's ui block (labels, Copilot wording, wrap-up codes, ...) with your overrides on top.
+const uiInfo = () => ({ defaults: getBrand(brandId).ui || {}, overrides: store.getUi(), effective: db.brand.ui || {} });
+route('GET', '/api/ui-text', () => uiInfo());
+route('PUT', '/api/ui-text', async (req) => {
+  const b = await readBody(req); const ui = b && (b.ui || b.overrides || b);
+  if (!ui || typeof ui !== 'object' || Array.isArray(ui)) throw bad('Send { "ui": { ... } } with the values to change');
+  store.setUi(ui); db.brand = { ...db.brand, ui: merge(getBrand(brandId).ui || {}, store.getUi()) }; return uiInfo();
+});
+route('DELETE', '/api/ui-text', () => { store.setUi({}); db.brand = { ...db.brand, ui: getBrand(brandId).ui || {} }; return uiInfo(); });
+// Wrap-up content for the Copilot "Wrap-up Codes" panel: suggested codes plus a generated summary for the taxpayer on the call.
+route('GET', '/api/wrap-summary', (req, url) => {
+  const p = Object.fromEntries(url.searchParams); const cp = (db.brand.ui && db.brand.ui.copilot) || {};
+  return wrapContent(p.scenario, getTp(p.taxpayerId), db.brand, db.taxYear, cp.topics);
 });
 route('POST', '/api/incidents', async (req) => {
   const b = await readBody(req); const t = getTp(b.taxpayerId);

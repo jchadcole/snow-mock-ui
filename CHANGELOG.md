@@ -2,6 +2,21 @@
 
 All notable changes to the SNOW Mock UI. Versions follow [semantic versioning](https://semver.org): MAJOR for a rebuild or breaking change to URLs, APIs or data actions; MINOR for new screens, scenarios or brands; PATCH for fixes. Each release is tagged `vX.Y.Z` in git.
 
+## 3.3.0 (2026-11-06)
+
+### Added
+- **Genesys Copilot panel** in the left column of the interaction screen, built from the "Genesys Copilot" recording:
+  - A **Copilot** tab (default) next to **Customer**, with Search knowledge, Review checklists, Generated Answer cards with Sources, the Transfer Summary and an expandable Transcription footer.
+  - After hang-up, a **Wrap-up Codes** tab: After call work, AI Powered code suggestions, a wrap-up code list, a generated Summary (editable and copyable), ratings with "Feedback submitted", the ACW timer and Done.
+  - Working buttons: search with Clear, checklist items and ⓘ, thumbs, source links, expand and close, wrap-up chips and list, ratings with undo.
+- **Settings > Demo text:** change the wording for each demo (Copilot labels, checklists, wrap-up codes, per-topic wrap-up summaries, Transfer Summary text). Saved on the server and in the browser, with Export, Import and Reset. Defaults are in `lib/brands.js` under `ui.copilot`.
+- **Settings > Agent assistance:** Genesys Copilot (default) or the ServiceNow Agent Assist panel from 3.0 to 3.2. A brand can set `ui.assistStyle`.
+- APIs: `GET/PUT/DELETE /api/ui-text` and `GET /api/wrap-summary`.
+
+### Changed
+- Each caller line in the demo script now carries a short question (`q`) that the Copilot shows above its Generated Answer.
+- The workspace pill in the top bar hides below 1480 px wide so it no longer overlaps the Ohio logo.
+
 ## 3.2.0 (2026-11-06)
 
 ### Added

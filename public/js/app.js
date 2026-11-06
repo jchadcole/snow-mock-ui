@@ -235,20 +235,70 @@
       <label class="f" style="flex-direction:row;gap:8px;align-items:center"><input type="checkbox" id="sAuto" ${S.settings.autoPop ? 'checked' : ''}> Open the taxpayer record automatically when a screen pop arrives</label>
       <div class="frow"><div class="f"><label>Screen pops open</label><select id="sView"><option value="interaction" ${S.settings.popView !== 'taxpayer' ? 'selected' : ''}>The interaction record (v3 workspace)</option><option value="taxpayer" ${S.settings.popView === 'taxpayer' ? 'selected' : ''}>The taxpayer record (v2 layout)</option></select></div>
       <div class="f"><label>Color scheme</label><select id="sPal"><option value="" ${!S.settings.palette ? 'selected' : ''}>Brand default (${esc((S.brand.ui && S.brand.ui.palette) || 'workspace')})</option><option value="workspace" ${S.settings.palette === 'workspace' ? 'selected' : ''}>Workspace template colors</option><option value="brand" ${S.settings.palette === 'brand' ? 'selected' : ''}>Brand colors</option></select></div></div>
+      <div class="frow"><div class="f"><label>Agent assistance (live call)</label><select id="sAS"><option value="" ${!S.settings.assistStyle ? 'selected' : ''}>Brand default (${esc((S.brand.ui && S.brand.ui.assistStyle) || 'copilot')})</option><option value="copilot" ${S.settings.assistStyle === 'copilot' ? 'selected' : ''}>Genesys Copilot (left panel)</option><option value="agent-assist" ${S.settings.assistStyle === 'agent-assist' ? 'selected' : ''}>ServiceNow Agent Assist (right panel)</option></select></div><div class="f"><label>Wording for this demo</label><button class="btn" id="sDemoText" type="button">Demo text…</button></div></div>
       <div class="f"><label>Brand (switching reloads the demo data with that agency's names)</label><select id="sBrand">${(S.config.brands || []).map((b) => `<option value="${b.id}" ${b.id === S.brand.id ? 'selected' : ''}>${esc(b.agency)}</option>`).join('')}</select></div>
       <p class="small"><a href="#" id="sSaved">Saved taxpayers (${localSaved().length})</a>: taxpayers you add are kept after restarts and redeploys. Export or import them here.</p>
       <p class="small muted">Version <b>${esc(S.config.version || '')}</b> (build ${esc(S.config.commit || '')}) · <a href="#" id="sNotes">Release notes</a></p>
       <p class="small muted">Retail version of the demo (Haven &amp; Hill guided story): <a href="/retail/" target="_blank">/retail/</a> · <a href="/api-docs.html" target="_blank">API reference</a></p>`,
       `<button class="btn danger left" id="sReset">Reset demo data</button><button class="btn" id="sOut">Switch user</button><button class="btn primary" id="sSave">Save</button>`);
     $('#sSave').onclick = async () => {
-      S.settings.agentEmail = fieldVal('sAgent'); S.settings.ringInbox = $('#sRing').checked; S.settings.autoPop = $('#sAuto').checked; S.settings.popView = fieldVal('sView'); S.settings.palette = $('#sPal').value; saveSettings(); applyTheme(S.brand);
+      S.settings.agentEmail = fieldVal('sAgent'); S.settings.ringInbox = $('#sRing').checked; S.settings.autoPop = $('#sAuto').checked; S.settings.popView = fieldVal('sView'); S.settings.palette = $('#sPal').value; S.settings.assistStyle = $('#sAS').value; saveSettings(); applyTheme(S.brand);
       if ($('#sBrand').value !== S.brand.id) { await api('/api/admin/reset', { method: 'POST', body: { brand: $('#sBrand').value } }); location.hash = '#/home'; location.reload(); return; }
       connectSSE(); closeModal(); render();
     };
+    $('#sDemoText').onclick = () => demoTextModal();
     $('#sNotes').onclick = (e) => { e.preventDefault(); releaseNotes(); };
     $('#sSaved').onclick = (e) => { e.preventDefault(); savedModal(); };
     $('#sOut').onclick = () => { S.user = null; store.set('user', null); closeModal(); render(); };
     $('#sReset').onclick = async () => { await api('/api/admin/reset', { method: 'POST' }); S.records = {}; S.tabs = []; saveTabs(); S.interaction = null; S.aiLog = []; S.calls = {}; S.ims = {}; S.call = null; S.imsHist = {}; closeModal(); toast('Demo data reset'); go('#/home'); };
+  }
+
+
+  // Demo text: each demo can use its own wording. Overrides are saved on the server (lib/store.js) and in this browser.
+  const applyUi = (r) => { if (r && r.effective) { S.brand.ui = r.effective; if (S.config && S.config.brand) S.config.brand.ui = r.effective; } };
+  async function syncUiText() {
+    try {
+      const r = await api('/api/ui-text'); const local = store.get('uiText', null);
+      if (local && Object.keys(local).length && !Object.keys(r.overrides || {}).length) applyUi(await api('/api/ui-text', { method: 'PUT', body: { ui: local } }));
+      else { store.set('uiText', r.overrides || {}); applyUi(r); }
+    } catch (e) { /* offline: keep the defaults */ }
+  }
+  const dtPath = (o, p, v, del) => { const ks = p.split('.'); let x = o; ks.slice(0, -1).forEach((k) => { x[k] = x[k] && typeof x[k] === 'object' ? x[k] : {}; x = x[k]; }); if (del) delete x[ks[ks.length - 1]]; else x[ks[ks.length - 1]] = v; };
+  const dtGet = (o, p) => p.split('.').reduce((x, k) => (x == null ? undefined : x[k]), o);
+  const dtPrune = (o) => { Object.keys(o).forEach((k) => { if (o[k] && typeof o[k] === 'object' && !Array.isArray(o[k])) { dtPrune(o[k]); if (!Object.keys(o[k]).length) delete o[k]; } }); return o; };
+  async function demoTextModal() {
+    const r = await api('/api/ui-text'); const d = r.defaults; const e = r.effective; const cpe = e.copilot || {}; const cpd = d.copilot || {};
+    const human = (k) => k.replace(/([A-Z])/g, ' $1').replace(/^./, (x) => x.toUpperCase());
+    const inp = (id, label, val, num) => `<div class="f"><label>${esc(label)}</label><input data-dt="${id}" ${num ? 'type="number"' : ''} value="${esc(val == null ? '' : val)}"></div>`;
+    const general = [['recordTitle', 'Record title (virtual agent transfers)'], ['reasonContacted', 'Transfer Summary: Reason contacted'], ['resolution', 'Transfer Summary: Resolution'], ['adherenceText', 'Adherence toast'], ['assistIntervalMs', 'Time between suggestions (ms)', true]];
+    const json = (id, label, val, rows) => `<div class="f"><label>${esc(label)}</label><textarea data-dt="${id}" data-json="1" rows="${rows}" style="font-family:monospace;font-size:12px">${esc(JSON.stringify(val == null ? {} : val, null, 2))}</textarea></div>`;
+    modal('Demo text', `<p class="small muted" style="margin-top:0">Change any wording for this demo, then Save. It applies to the next call you open and is kept after restarts. Blank keeps the default. <b>Reset</b> goes back to lib/brands.js.</p>
+      <h4 style="margin:6px 0">General</h4><div class="dt-grid">${general.map(([k, l, n]) => inp(k, l, e[k], n)).join('')}</div>
+      <div class="f"><label>Wrap-up codes (one per line)</label><textarea data-dt="wrapCodes" data-lines="1" rows="4">${esc((e.wrapCodes || []).join('\n'))}</textarea></div>
+      <h4 style="margin:10px 0 6px">Copilot labels</h4><div class="dt-grid">${Object.keys(cpd).filter((k) => typeof cpd[k] === 'string').map((k) => inp(`copilot.${k}`, human(k), cpe[k])).join('')}</div>
+      ${json('copilot.checklists', 'Checklists (JSON: name, items with text, required, info, auto = complete after that many conversation lines; use [] for none)', cpe.checklists, 9)}
+      ${json('copilot.topics', 'Wrap-up text per topic (JSON). Topics: notice-paid, refund-identity, refund-docs, refund, balance, docs, default. Fields: reason, resolution, actions, details, codes. Placeholders: {first} {full} {notice} {noticeAmount} {noticeYear} {refund} {refundYear} {refundStatus} {payment}', cpe.topics, 7)}
+      <p class="small muted">To keep this text permanently on Render's free plan, Export it and commit it as <b>data/demo-text.json</b>, or set DATA_DIR to a persistent disk. This browser also keeps a copy and restores it if the server restarts.</p>
+      <input type="file" id="dtFile" accept="application/json,.json" hidden>`,
+      `<button class="btn danger left" id="dtReset">Reset</button><button class="btn" id="dtImport">Import</button><button class="btn" id="dtExport">Export</button><button class="btn primary" id="dtSave">Save</button>`, { wide: true });
+    const apply = async (res, msg) => { applyUi(res); store.set('uiText', res.overrides || {}); closeModal(); toast(msg); render(); };
+    $('#dtSave').onclick = async () => {
+      const ov = JSON.parse(JSON.stringify(r.overrides || {}));
+      for (const el of $$('[data-dt]')) {
+        const p = el.dataset.dt; let v = el.value;
+        if (el.dataset.json) { try { v = JSON.parse(v || '{}'); } catch (err) { return toast(`${esc(p)} is not valid JSON: ${esc(err.message)}`, { cls: 'genesys' }); } }
+        else if (el.dataset.lines) v = v.split('\n').map((x) => x.trim()).filter(Boolean);
+        else if (el.type === 'number') v = v === '' ? undefined : Number(v);
+        else if (v === '') v = undefined;
+        const same = v === undefined || JSON.stringify(v) === JSON.stringify(dtGet(d, p));
+        dtPath(ov, p, v, same);
+      }
+      await apply(await api('/api/ui-text', { method: 'PUT', body: { ui: dtPrune(ov) } }), 'Demo text saved');
+    };
+    $('#dtReset').onclick = async () => apply(await api('/api/ui-text', { method: 'DELETE' }), 'Demo text reset to the defaults');
+    $('#dtExport').onclick = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify({ ui: r.overrides || {} }, null, 2)], { type: 'application/json' })); a.download = 'ui-text.json'; a.click(); };
+    $('#dtImport').onclick = () => $('#dtFile').click();
+    $('#dtFile').onchange = async (ev) => { const f = ev.target.files[0]; if (!f) return; try { const j = JSON.parse(await f.text()); await apply(await api('/api/ui-text', { method: 'PUT', body: { ui: j.ui || j } }), 'Demo text imported'); } catch (err) { toast(`Import failed: ${esc(err.message)}`, { cls: 'genesys' }); } };
   }
 
   // Saved taxpayers: the server keeps them in a file; this browser keeps a copy too and re-sends any the server lost
@@ -959,6 +1009,7 @@
     cap: '<path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c3 2 9 2 12 0v-5M22 9v6"/>', clip: '<path d="M20 12l-8 8a5 5 0 01-7-7l9-9a3.5 3.5 0 015 5l-9 9a2 2 0 01-3-3l8-8"/>',
     script: '<path d="M8 3h11v15a3 3 0 01-3 3H6a3 3 0 01-3-3v-2h11v2a3 3 0 003 3"/><path d="M8 3a3 3 0 00-3 3v10M11 8h5M11 12h5"/>', image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/>',
     filter: '<path d="M4 5h16l-6 7v6l-4 2v-8z"/>', cal: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>', chevup: '<path d="M6 15l6-6 6 6"/>', expand: '<path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/>',
+    bulb: '<path d="M9 18h6M10 21h4M12 3a6 6 0 00-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0012 3z"/>', panel: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M13 5v14"/>', clip2: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4h6v3H9zM9 12l2 2 4-4"/>',
     plus2: '<path d="M12 4v16M4 12h16" stroke-width="3"/>', kbdoc: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/>', gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',
   };
   Object.assign(IC, IC3);
@@ -971,7 +1022,7 @@
     if (!rec) rec = await api('/api/ims', { method: 'POST', body: { taxpayerId: ix.taxpayerId || '', phone: ix.phone, conversationId: ix.conversationId, queue: ix.queue, intent: ix.intent, mediaType: ix.mediaType, botSessionId: ix.bot?.id || '', customerName: ix.customerName, assignedTo: S.user.name } });
     rec = await api(`/api/ims/${rec.id}`, { method: 'PATCH', body: { state: 'Work in Progress', assignedTo: S.user.name } });
     S.ims[rec.id] = rec; S.interaction = ix; ix.imsId = rec.id;
-    const c = { id: rec.id, phase: 'connecting', tabStage: 'loading', accepted: Date.now(), first: t?.firstName || '', toast: false, histLoading: false, assist: 'related', script: [], shown: [], votes: {}, fb: {}, pill: 0, summaryOpen: true, muted: false, held: false, rec: true, flagged: false, keypad: '', wrap: null, events: [] };
+    const c = { id: rec.id, phase: 'connecting', tabStage: 'loading', accepted: Date.now(), first: t?.firstName || '', toast: false, histLoading: false, assist: 'related', script: [], shown: [], votes: {}, fb: {}, pill: 0, summaryOpen: true, muted: false, held: false, rec: true, flagged: false, keypad: '', wrap: null, events: [], ltab: isCop() ? 'copilot' : 'customer', cp: { checks: newChecks(), checkOpen: true, sel: 0, trOpen: false } };
     S.calls[rec.id] = c; S.call = rec.id;
     if (!S.tabs.some((x) => x.kind === 'ims' && x.id === rec.id)) { S.tabs.push({ kind: 'ims', id: rec.id, label: rec.contact || rec.phone || rec.id }); saveTabs(); }
     go(`#/ims/${rec.id}`);
@@ -993,6 +1044,7 @@
     const line = c.script[c.shown.length];
     c.shown.push({ ...line, at: Date.now() }); c.events.push({ at: Date.now(), who: line.who, text: fill(line.text, c) });
     if (line.article) c.pill++;
+    if (c.cp) cpAuto(c);
     if (parseRoute().name === 'ims' && parseRoute().parts[1] === c.id) paintAssist();
     scheduleAssist(c);
   }
@@ -1004,6 +1056,7 @@
     Object.values(S.calls).forEach((c) => {
       if (c.phase === 'active') $$(`.ims-clock[data-c="${c.id}"]`).forEach((x) => { x.textContent = clock(Date.now() - c.connectedAt); });
       if (c.wrap) $$(`.wrap-clock[data-c="${c.id}"]`).forEach((x) => { x.textContent = clock(Date.now() - c.wrap.startedAt); });
+      if (c.wrap) $$(`.acw-clock[data-c="${c.id}"]`).forEach((x) => { x.textContent = clock(Date.now() - c.wrap.startedAt).slice(3); });
     });
   }, 1000);
 
@@ -1019,8 +1072,8 @@
     if (rec.taxpayerId) await loadTp(rec.taxpayerId);
     if (rec.taxpayerId) S.imsHist = S.imsHist || {};
     if (rec.taxpayerId && (!S.imsHist[rec.taxpayerId] || S.imsHist[rec.taxpayerId].at < Date.now() - 2000)) S.imsHist[rec.taxpayerId] = { at: Date.now(), list: await api(`/api/ims?taxpayerId=${rec.taxpayerId}`) };
-    el.innerHTML = `<div class="ims ${S.imsUi.side === 'none' ? 'no-assist' : ''}" id="ims">
-      <div class="ims-side"><div id="imsCard"></div><div class="ctx-tabs"><span class="on">Customer</span></div><div class="ims-hist" id="imsHist"></div></div>
+    el.innerHTML = `<div class="ims ${rightHidden() ? 'no-assist' : ''} ${S.imsUi.wide ? 'cop-wide' : ''}" id="ims">
+      <div class="ims-side"><div id="imsCard"></div><div class="ctx-tabs" id="imsTabs"><span class="on">Customer</span></div><div class="ims-hist" id="imsHist"></div><div class="ims-cop" id="imsCop" style="display:none"></div></div>
       <div class="ims-main"><div class="ims-head" id="imsHead"></div><div class="ims-form" id="imsForm"></div></div>
       <div class="ims-assist" id="imsAssist"></div>
       <div class="ims-rail">${[['cap', 'learn', 'Learning'], ['clip', 'attach', 'Attachments'], ['doc', 'details', 'Record details'], ['plus2', 'assist', 'Agent Assist'], ['script', 'script', 'Script'], ['image', 'images', 'Images']].map(([i, k, l]) => `<button data-side="${k}" class="${S.imsUi.side === k ? 'on' : ''} ${k === 'assist' ? 'aa' : ''}" title="${l}">${ic(i)}</button>`).join('')}</div>
@@ -1120,6 +1173,8 @@
   function paintAssist() {
     const box = $('#imsAssist'); if (!box) return; const { rec, c, t } = imsCtx();
     const side = S.imsUi.side;
+    paintCop();
+    if (isCop() && rightHidden()) { box.innerHTML = ''; return; }
     if (side !== 'assist') { box.innerHTML = sidePanel(side, rec, t); return; }
     const mode = c ? c.assist : 'awaiting';
     const search = (ph, val, focus) => `<form class="ksearch ${focus ? 'focus' : ''}" id="kForm">${ic('search')}<input id="kQ" placeholder="${ph}" value="${esc(val || '')}" autocomplete="off">${val ? `<span data-c="kclear">${ic('x', 'sm')}</span>` : ''}</form>`;
@@ -1153,9 +1208,140 @@
     return `${head('Images')}<div class="nomatch"><b>No images</b></div>`;
   }
 
+  // ---------------------------------------------------------------- Genesys Copilot panel (left column)
+  // Follows the "Genesys Copilot" template recording: a Copilot panel (search, checklists, Generated Answer cards with
+  // sources, Transfer Summary, Transcription) and, after the call, a Wrap-up Codes panel. Every label and list comes from
+  // brand.ui.copilot, so each demo can use its own wording (Settings > Demo text, or lib/brands.js).
+  const isCop = () => (S.settings.assistStyle || UI().assistStyle || 'copilot') !== 'agent-assist';
+  const CPX = () => UI().copilot || {};
+  const LB = () => new Proxy(CPX(), { get: (o, k) => (o[k] == null ? '' : o[k]) });
+  const getLt = (c) => (!isCop() ? 'customer' : ((c && c.ltab) || S.imsUi.ltab || (c && ['connecting', 'active'].includes(c.phase) ? 'copilot' : 'customer')));
+  const setLt = (c, v) => { if (c) c.ltab = v; else S.imsUi.ltab = v; };
+  const rightHidden = () => (isCop() ? ['none', 'assist'].includes(S.imsUi.side) : S.imsUi.side === 'none');
+  const newChecks = () => (CPX().checklists || []).map((cl) => ({ name: cl.name, notified: false, items: (cl.items || []).map((it) => ({ ...it, done: false, show: false })) }));
+  const checkDone = (cl) => cl.items.length > 0 && cl.items.every((x) => x.done);
+  function cpChecked(c) {
+    const L = LB();
+    let fresh = false;
+    c.cp.checks.forEach((cl) => { if (checkDone(cl) && !cl.notified) { cl.notified = true; fresh = true; toast(`"${esc(cl.name)}" ${esc(L.checklistDone)}`); } });
+    if (fresh && c.cp.checks.every(checkDone)) c.cp.checkOpen = false;
+  }
+  function cpAuto(c) { c.cp.checks.forEach((cl) => cl.items.forEach((it) => { if (!it.done && it.auto && c.shown.length >= Number(it.auto)) it.done = true; })); cpChecked(c); }
+  function cpRank(q) {
+    const w = String(q || '').toLowerCase().split(/[^a-z0-9#$]+/).filter((x) => x.length > 2); if (!w.length) return [];
+    return (S.kbCache || []).map((k) => { const t = `${k.id} ${k.title}`.toLowerCase(); const b = `${k.summary} ${k.body || ''} ${k.category}`.toLowerCase(); return { k, s: w.reduce((n, x) => n + (t.includes(x) ? 3 : 0) + (b.includes(x) ? 1 : 0), 0) }; }).filter((x) => x.s > 0).sort((a, b) => b.s - a.s).map((x) => x.k);
+  }
+  const srcLinks = (list) => list.map((k) => `<a class="srcl" data-kbopen="${esc(k.id)}">${ic('kbdoc', 'sm')}<span>${esc(k.title)}</span></a>`).join('');
+  const genCard = (c, key, ans, srcs) => { const L = LB(); return `<div class="cgen"><div class="gh">${ic('spark', 'sm')}<b>${esc(L.generatedAnswer)}</b>${thumbs(c, key)}</div><p>${ans}</p><div class="srcs"><b>${esc(L.sources)}</b><div>${srcLinks(srcs)}</div></div></div>`; };
+  const copHead = (title, icon) => `<div class="cop-h"><span class="bulb">${ic(icon)}</span><b>${esc(title)}</b><span class="sp"></span><span data-cp="wide" title="Expand">${ic('panel')}</span><span data-cp="close" title="Close">${ic('x')}</span></div>`;
+  function cpChecks(c) {
+    const L = LB(); const k = c.cp; const all = k.checks.every(checkDone);
+    if (!k.checkOpen) return `<div class="chk-c"><b>${k.checks.length} ${esc(k.checks.length > 1 ? L.checklistsCount : L.checklistCount)}</b>${all ? `<span class="chip done">${esc(L.completed)}</span>` : `<span class="chip">${k.checks.filter(checkDone).length}/${k.checks.length}</span>`}<span class="chev" data-cp="chkt">${ic('down')}</span></div>`;
+    const sel = Math.min(k.sel || 0, k.checks.length - 1); const cl = k.checks[sel];
+    return `<div class="chk"><div class="chk-h"><b>${esc(L.checklistsTitle)}</b><span class="chev" data-cp="chkt">${ic('chevup')}</span></div>
+      <div class="chips">${k.checks.map((x, i) => `<span class="chip ${checkDone(x) ? 'done' : ''} ${i === sel ? 'sel' : ''}" data-cp="chksel" data-i="${i}">${checkDone(x) ? ic('check', 'sm') : ''}${esc(x.name)}</span>`).join('')}</div>
+      <div class="chk-card"><div class="chk-t">${ic('doc')}<b>${esc(cl.name)}</b><span class="cnt">${cl.items.filter((x) => x.done).length}/${cl.items.length}</span></div>
+      ${cl.items.map((it, j) => `<div class="ci" data-cp="citem" data-i="${sel}" data-j="${j}"><span class="cbox ${it.done ? 'on' : ''}">${it.done ? ic('check', 'sm') : ''}</span><span class="ct ${it.done ? 'done' : ''}">${esc(it.text)}${it.required ? ' <i>*</i>' : ''}</span>${it.info ? `<span class="ii" data-cp="cinfo" data-i="${sel}" data-j="${j}" title="${esc(it.info)}">${ic('info', 'sm')}</span>` : ''}</div>${it.show ? `<div class="cinfo">${esc(it.info)}</div>` : ''}`).join('')}</div></div>`;
+  }
+  function cpLive(rec, c) {
+    const L = LB(); const U = UI();
+    const items = c.shown.filter((x) => x.article).reverse();
+    const kb = (id) => (S.kbCache || []).find((k) => k.id === id);
+    const pill = c.pill ? `<div class="newpill" data-c="pill">${c.pill} ${esc(c.pill > 1 ? L.newSuggestions : L.newSuggestion)} ${ic('chevup', 'sm')}</div>` : '';
+    const body = items.map((x, i) => { const a = x.article; const k = kb(a.id); const srcs = [k || a, ...(S.kbCache || []).filter((y) => k && y.id !== a.id && y.category === k.category).slice(0, 2)];
+      return `<div class="cq-i ${i > 0 ? 'old' : ''}"><h4 class="cq">${esc(fill(x.q || x.text, c))} <span class="qi" title="${esc(L.questionInfo)}">${ic('info', 'sm')}</span></h4>${genCard(c, a.id, hl(a.text, x.hl), srcs)}</div>`; }).join('');
+    const sm = rec.bot ? `<div class="tsum ${items.length ? 'old' : ''}"><div class="tsh">${ic('spark', 'sm')} <b>${esc(L.transferSummary)}</b></div>${c.summaryOpen
+      ? `<div class="tsl"><b>${esc(L.reasonLabel)}</b><p>${esc(rec.bot.outcome === 'Transferred' ? U.reasonContacted : rec.bot.intent)}</p></div><div class="tsl"><b>${esc(L.summaryLabel)}</b><p>${esc(rec.bot.summary || '')}</p></div><div class="tsl"><b>${esc(L.resolutionLabel)}</b><p>${esc(rec.bot.outcome === 'Transferred' ? U.resolution : 'Resolved by the virtual agent')}</p></div>`
+      : `<p class="small">${esc((rec.bot.summary || '').slice(0, 90))}…</p>`}<a class="showless" data-c="summary">${c.summaryOpen ? `${ic('chevup', 'sm')} Show less` : `${ic('down', 'sm')} Show more`}</a><div class="aitip">${ic('spark', 'sm')}<span>${esc(L.aiNote)}</span></div></div>` : '';
+    return `${pill}${c.cp.checks.length ? cpChecks(c) : ''}${body}${sm}${!items.length && !rec.bot ? `<div class="nomatch"><b>Listening</b><div>Suggestions appear here as the caller speaks.</div></div>` : ''}`;
+  }
+  function copTrans(c) {
+    const L = LB(); const open = !!(c && c.cp && c.cp.trOpen);
+    const ev = c ? c.events.filter((e) => e.who !== 'system') : [];
+    const who = (e) => (e.who === 'agent' ? S.user.name.split(' ')[0] : String((S.ims[c.id] || {}).contact || 'Caller').split(' ')[0]);
+    return `<div class="cop-tr ${open ? 'open' : ''}"><div class="trh" data-cp="tr">${ic('chat')}<b>${esc(L.transcription)}</b>${ic(open ? 'down' : 'chevup')}</div>${open ? `<div class="trb">${ev.length ? ev.map((e) => `<div class="tl ${e.who}"><b>${esc(who(e))}</b> ${esc(e.text)}</div>`).join('') : `<div class="small muted">${esc(L.transcriptionEmpty)}</div>`}</div>` : ''}</div>`;
+  }
+  function copMain(rec, c) {
+    const L = LB(); const mode = c ? c.assist : 'awaiting';
+    const draft = c && c.cpDraft != null ? c.cpDraft : (c && c.kq) || '';
+    const search = `<form class="cop-search" id="cpForm">${ic('search')}<input id="cpQ" placeholder="${esc(L.searchPlaceholder)}" value="${esc(draft)}" autocomplete="off">${draft ? `<span data-cp="clear" title="Clear">${ic('x', 'sm')}</span>` : ''}</form>`;
+    const q = c ? c.kq : S.imsUi.cpq;
+    let res = '';
+    if (q) { const list = cpRank(q); res = `<div class="rs-h">${esc(L.searchResults)} <a data-cp="clear">Clear</a></div>${list.length ? `<h4 class="cq">${esc(q)}</h4>${genCard(c || { votes: {} }, 'q:' + q, esc(list[0].summary + (list[0].body ? ' ' + list[0].body : '')), list.slice(0, 4))}` : `<div class="nomatch"><b>${esc(L.noMatches)}</b></div>`}<hr>`; }
+    let body;
+    if (!c || mode === 'awaiting' || c.phase === 'unavailable' || c.phase === 'closed') body = `<div class="await">${spinner()}<b>${esc(L.waiting)}</b></div>`;
+    else if (mode === 'related' || mode === 'loading') body = `<div class="await">${spinner(L.loading)}</div>`;
+    else body = cpLive(rec, c);
+    return `${copHead(L.title, 'bulb')}${search}<div class="cop-b">${res}${body}</div>${copTrans(c)}`;
+  }
+  function copWrap(rec, c) {
+    const L = LB(); const w = c.wrap; const wc = c.wc || { loading: true }; const sugg = wc.codes || [];
+    const all = [...new Set([...(UI().wrapCodes || []), ...sugg])];
+    const rate = (key, label) => { const r = (c.wcRate || {})[key]; return `<div class="rate"><i>${esc(label)}</i>${r ? `<span class="fbs">${esc(L.feedbackSubmitted)} <a data-cp="rateundo" data-k="${key}" title="${esc(L.undo)}">⟲</a></span>` : `<span class="thumbs"><span data-cp="rate" data-k="${key}" data-v="up" title="${esc(L.relevant)}">${ic('up')}</span><span data-cp="rate" data-k="${key}" data-v="dn" title="${esc(L.irrelevant)}">${ic('dn')}</span></span>`}</div>`; };
+    return `${copHead(L.wrapTitle, 'clip2')}<div class="cop-b wrapb"><div class="aw"><h3>${esc(L.afterCallWork)}</h3><span class="aip">${ic('spark', 'sm')} ${esc(L.aiPowered)}</span></div>
+      <label>${esc(L.wrapCodeLabel)} <span class="req">*</span></label>
+      <div class="wsel ${w.code ? 'has' : ''}" data-cp="wmenu"><span>${esc(w.code || L.wrapCodePlaceholder)}</span>${ic('down', 'sm')}</div>
+      ${c.wmenu ? `<div class="wmenu">${all.map((x) => `<div data-cp="wcode" data-v="${esc(x)}" class="${w.code === x ? 'on' : ''}">${esc(x)}</div>`).join('')}</div>` : ''}
+      ${wc.loading ? spinner(L.creatingSuggestions) : `<div class="chips w">${sugg.map((x) => `<span class="chip ${w.code === x ? 'sel' : ''}" data-cp="wcode" data-v="${esc(x)}">${esc(x)}</span>`).join('')}</div>${rate('sugg', L.rateSuggestions)}`}
+      <label class="sl">${esc(L.summaryTitle)} <span class="cpy" data-cp="copy" title="Copy">${ic('copy', 'sm')}</span></label>
+      ${wc.loading ? spinner(L.generating) : `<textarea id="wcSum" rows="12">${esc(w.notes)}</textarea>${rate('summ', L.rateSummary)}${rate('voice', L.rateVoice)}`}
+    </div><div class="cop-f"><span class="acw"><b class="acw-clock" data-c="${c.id}">${clock(Date.now() - w.startedAt).slice(3)}</b> ${esc(L.acwTime)}</span><button class="btn navy" id="wcDone" ${w.code ? '' : 'disabled'}>${esc(L.done)}</button></div>`;
+  }
+  function paintCop() {
+    const tabs = $('#imsTabs'); const box = $('#imsCop'); const hist = $('#imsHist'); if (!tabs || !box || !hist) return;
+    const { rec, c } = imsCtx(); const L = LB(); let lt = getLt(c);
+    if (lt === 'wrap' && !(c && c.wrap)) lt = 'copilot';
+    tabs.innerHTML = isCop() ? `<span data-lt="copilot" class="${lt === 'copilot' ? 'on' : ''}">${esc(L.title)}</span>${c && c.wrap ? `<span data-lt="wrap" class="${lt === 'wrap' ? 'on' : ''}">${esc(L.wrapTitle)}</span>` : ''}<span data-lt="customer" class="${lt === 'customer' ? 'on' : ''}">Customer</span>` : '<span class="on">Customer</span>';
+    hist.style.display = lt === 'customer' ? '' : 'none'; box.style.display = lt === 'customer' ? 'none' : 'flex';
+    const ims = $('#ims'); if (ims) { ims.classList.toggle('no-assist', rightHidden()); ims.classList.toggle('cop-wide', !!S.imsUi.wide); }
+    if (lt === 'customer') return;
+    const ae = document.activeElement; const typing = ae && ae.id === 'cpQ' ? { s: ae.selectionStart } : null;
+    const old = box.querySelector('.cop-b'); const sc = old && box.dataset.cur === lt ? old.scrollTop : 0; const trs = box.querySelector('.trb');
+    box.dataset.cur = lt;
+    box.innerHTML = lt === 'wrap' ? copWrap(rec, c) : copMain(rec, c);
+    const nb = box.querySelector('.cop-b'); if (nb) nb.scrollTop = sc; const tr = box.querySelector('.trb'); if (tr) tr.scrollTop = trs && trs.scrollTop < trs.scrollHeight - trs.clientHeight - 30 ? trs.scrollTop : tr.scrollHeight;
+    const f = $('#cpForm');
+    if (f) { const inp = $('#cpQ'); f.onsubmit = (e) => { e.preventDefault(); const v = inp.value.trim(); if (c) { c.kq = v; c.cpDraft = v; } else S.imsUi.cpq = v; paintCop(); };
+      inp.oninput = () => { if (c) c.cpDraft = inp.value; };
+      if (typing) { inp.focus(); try { inp.setSelectionRange(typing.s, typing.s); } catch (e) { /* ignore */ } } }
+    const ws = $('#wcSum'); if (ws) ws.oninput = () => { c.wrap.notes = ws.value; c.wrap.edited = true; };
+    const wd = $('#wcDone'); if (wd) wd.onclick = () => submitWrap(c);
+    if (c && lt === 'copilot' && c.pill && !c.pillT) c.pillT = setTimeout(() => { c.pill = 0; c.pillT = null; paintCop(); }, 3500);
+  }
+  async function loadWrap(c) {
+    const rec = S.ims[c.id]; const L = LB(); c.wc = { loading: true };
+    const q = new URLSearchParams({ scenario: rec.scenario || '', taxpayerId: rec.taxpayerId || '' });
+    const [w] = await Promise.all([api(`/api/wrap-summary?${q}`).catch(() => null), new Promise((r) => setTimeout(r, 1500))]);
+    if (!c.wrap) return;
+    const d = w || { reason: 'General question', resolution: 'All inquiries addressed', actions: 'Follow up not needed', details: '', codes: [] };
+    const out = c.wrap.outcomeText ? `\nActions taken in the workspace: ${c.wrap.outcomeText}` : '';
+    if (!c.wrap.edited) c.wrap.notes = `${L.reasonForCall}:\n${d.reason}\n\n${L.resolutionLabel}:\n${d.resolution}\n\n${L.actionItems}:\n${d.actions}\n\n${L.details}:\n${d.details}${out}`;
+    c.wc = { loading: false, codes: d.codes || [] };
+    if (getLt(c) === 'wrap' && parseRoute().name === 'ims' && parseRoute().parts[1] === c.id) paintCop();
+  }
+  function copClicks(e, c, rec) {
+    const b = e.target.closest('[data-cp]'); if (!b) return false;
+    e.stopPropagation(); const k = b.dataset.cp; const i = Number(b.dataset.i); const j = Number(b.dataset.j);
+    if (k === 'close') { setLt(c, 'customer'); return paintCop(), true; }
+    if (k === 'wide') { S.imsUi.wide = !S.imsUi.wide; return paintCop(), true; }
+    if (k === 'clear') { if (c) { c.kq = ''; c.cpDraft = ''; } else S.imsUi.cpq = ''; return paintCop(), true; }
+    if (k === 'tr' && c) { c.cp.trOpen = !c.cp.trOpen; return paintCop(), true; }
+    if (!c) return true;
+    if (k === 'chkt') { c.cp.checkOpen = !c.cp.checkOpen; return paintCop(), true; }
+    if (k === 'chksel') { c.cp.sel = i; return paintCop(), true; }
+    if (k === 'citem') { const it = c.cp.checks[i].items[j]; it.done = !it.done; cpChecked(c); return paintCop(), true; }
+    if (k === 'cinfo') { const it = c.cp.checks[i].items[j]; it.show = !it.show; return paintCop(), true; }
+    if (k === 'wmenu') { c.wmenu = !c.wmenu; return paintCop(), true; }
+    if (k === 'wcode' && c.wrap) { c.wrap.code = b.dataset.v; c.wmenu = false; return paintCop(), true; }
+    if (k === 'rate') { c.wcRate = c.wcRate || {}; c.wcRate[b.dataset.k] = b.dataset.v; return paintCop(), true; }
+    if (k === 'rateundo') { if (c.wcRate) delete c.wcRate[b.dataset.k]; return paintCop(), true; }
+    if (k === 'copy' && c.wrap) { navigator.clipboard?.writeText(c.wrap.notes).catch(() => {}); toast('Summary copied'); return true; }
+    return true;
+  }
+
   function paintWrap() {
     const box = $('#imsWrap'); if (!box) return; const { c } = imsCtx();
-    if (!c || !c.wrap) { box.innerHTML = ''; return; }
+    if (!c || !c.wrap || isCop()) { box.innerHTML = ''; return; }
     const w = c.wrap;
     box.innerHTML = `<div class="wrapdock ${w.big ? 'big' : ''}"><div class="wd-h"><b>Wrap up</b><span data-c="wbig" title="${w.big ? 'Collapse' : 'Expand'}">${ic('expand', 'sm')}</span></div>
       <div class="wd-b"><label>Wrap up timer</label><div><span class="wtimer wrap-clock" data-c="${c.id}">${clock(Date.now() - w.startedAt)}</span></div>
@@ -1176,6 +1362,7 @@
     clearTimeout(c.aTimer); c.phase = 'wrapup'; c.endedAt = Date.now(); c.assist = 'feedback'; c.events.push({ at: Date.now(), who: 'system', text: 'Agent has left.' });
     const t = S.ims[c.id]?.taxpayerId ? S.records[S.ims[c.id].taxpayerId] : null;
     c.wrap = { startedAt: Date.now(), code: '', notes: t && S.interaction?.outcomes?.length ? S.interaction.outcomes.map((o) => o.text).join('. ') + '.' : '', big: false };
+    if (isCop()) { c.wrap.outcomeText = c.wrap.notes.replace(/\.$/, ''); c.wrap.notes = ''; c.ltab = 'wrap'; c.wcRate = {}; c.wmenu = false; loadWrap(c); }
     S.menu = null; shell(); renderPage();
   }
   async function submitWrap(c) {
@@ -1184,8 +1371,8 @@
     const lines = [];
     if (rec.bot) rec.bot.transcript.filter((l) => l.who !== 'event').forEach((l) => lines.push({ time: hhmm(Date.parse(rec.bot.date + 'Z') ? c.accepted - 60000 : c.accepted), who: l.who === 'bot' ? rec.bot.botName : contact, text: l.text }));
     c.events.forEach((e) => lines.push({ time: hhmm(e.at), who: e.who === 'system' ? 'system' : e.who === 'agent' ? agent : contact, text: e.text }));
-    const wrap = c.wrap; c.wrap = null; c.phase = 'unavailable'; c.assist = 'awaiting'; paintWrap(); paintCard(); paintAssist();
-    const feedback = Object.entries(c.votes).map(([kb, vote]) => ({ kb, vote, sent: c.fb[kb] === 'sent' }));
+    const wrap = c.wrap; c.wrap = null; c.phase = 'unavailable'; c.assist = 'awaiting'; c.ltab = isCop() ? 'copilot' : 'customer'; paintWrap(); paintCard(); paintAssist();
+    const feedback = [...Object.entries(c.votes).filter(([kb, v]) => v && !kb.startsWith('q:')).map(([kb, vote]) => ({ kb, vote, sent: c.fb[kb] === 'sent' })), ...Object.entries(c.wcRate || {}).map(([kb, vote]) => ({ kb: `copilot:${kb}`, vote, sent: true }))];
     const out = await act(() => api(`/api/ims/${c.id}/close`, { method: 'POST', body: { wrapCode: wrap.code, notes: wrap.notes, transcript: lines, feedback, assignedTo: agent, durationSec: Math.floor((c.endedAt - c.connectedAt) / 1000), verified: rec.verified } }));
     S.ims[c.id] = out; if (S.call === c.id) S.call = null; S.interaction = null;
     if (t) { await loadTp(t.id, true); S.imsHist && (S.imsHist[t.id] = null); }
@@ -1195,7 +1382,9 @@
   async function imsClicks(e) {
     const { rec, c, t } = imsCtx();
     const dt = e.target.closest('[data-dtmf]'); if (dt) { e.stopPropagation(); c.keypad += dt.dataset.dtmf; $('.keypad .kd').textContent = c.keypad; return; }
-    const side = e.target.closest('[data-side]'); if (side) { S.imsUi.side = S.imsUi.side === side.dataset.side && side.dataset.side !== 'assist' ? 'assist' : side.dataset.side; $$('.ims-rail button').forEach((b) => b.classList.toggle('on', b.dataset.side === S.imsUi.side)); return paintAssist(); }
+    const lt = e.target.closest('[data-lt]'); if (lt) { setLt(c, lt.dataset.lt); return paintCop(); }
+    if (copClicks(e, c, rec)) return;
+    const side = e.target.closest('[data-side]'); if (side) { const k = side.dataset.side; if (isCop()) { if (k === 'assist') { S.imsUi.side = 'none'; setLt(c, c && c.wrap ? 'wrap' : 'copilot'); } else S.imsUi.side = S.imsUi.side === k ? 'none' : k; } else S.imsUi.side = S.imsUi.side === k && k !== 'assist' ? 'assist' : k; $$('.ims-rail button').forEach((b) => b.classList.toggle('on', b.dataset.side === S.imsUi.side || (isCop() && b.dataset.side === 'assist' && rightHidden()))); return paintAssist(); }
     const v = e.target.closest('[data-vote]'); if (v) { e.stopPropagation(); const k = v.dataset.kb; c.votes[k] = c.votes[k] === v.dataset.vote ? undefined : v.dataset.vote; return paintAssist(); }
     const fb = e.target.closest('[data-fb]'); if (fb) { e.stopPropagation(); c.fb[fb.dataset.kb] = fb.dataset.fb === 'send' ? 'sent' : 'dismissed'; if (fb.dataset.fb === 'send') toast('Feedback sent. Thank you.'); return paintAssist(); }
     const fs = e.target.closest('[data-fbsel]'); if (fs && !e.target.closest('a')) { c.fbSel = fs.dataset.fbsel; return paintAssist(); }
@@ -1214,7 +1403,7 @@
       mute: () => { c.muted = !c.muted; paintCard(); }, hold: () => { c.held = !c.held; paintCard(); }, keypadmenu: () => menuToggle('keypad', paintCard), flag: () => { c.flagged = !c.flagged; paintCard(); if (c.flagged) toast('Interaction flagged for your supervisor'); },
       transfer: () => transferModal(c), hangup: () => hangUp(c),
       toastx: () => { c.toast = false; paintToast(); },
-      summary: () => { c.summaryOpen = !c.summaryOpen; paintAssist(); }, pill: () => { c.pill = 0; $('#imsAssist').scrollTop = 0; paintAssist(); },
+      summary: () => { c.summaryOpen = !c.summaryOpen; paintAssist(); }, pill: () => { c.pill = 0; $('#imsAssist').scrollTop = 0; const cb = $('.cop-b'); if (cb) cb.scrollTop = 0; paintAssist(); },
       kclear: () => { c.kq = ''; c.kres = c.assist === 'related' ? [] : null; paintAssist(); },
       wbig: () => { c.wrap.big = !c.wrap.big; paintWrap(); },
       collapse: () => { S.imsUi.collapsed = !S.imsUi.collapsed; paintForm(); },
@@ -1344,7 +1533,7 @@
       applyTheme(config.brand);
       if (S.user && !users.some((u) => u.id === S.user.id && u.email === S.user.email)) { S.user = users.find((u) => u.id === S.user.id) || null; store.set('user', S.user); }
     } catch (e) { $('#root').innerHTML = `<div style="padding:40px">Cannot reach the workspace server: ${esc(e.message)}</div>`; return; }
-    const restored = await syncSaved(); if (restored) toast(`Restored ${restored} saved taxpayer${restored === 1 ? '' : 's'}`);
+    await syncUiText(); const restored = await syncSaved(); if (restored) toast(`Restored ${restored} saved taxpayer${restored === 1 ? '' : 's'}`);
     await Promise.all(S.tabs.filter((t) => t.kind === 'tp').map((t) => loadTp(t.id).catch(() => { S.tabs = S.tabs.filter((x) => x !== t); })));
     const isPop = location.pathname.replace(/\/$/, '') === '/pop' || ['phone', 'ani', 'taxpayerId', 'returnId', 'conversationId', 'gcConversationId'].some((k) => clean(qp.get(k)));
     if (isPop && !S.user) { S.user = S.users.find((u) => u.persona === (qp.get('persona') || 'agent')) || S.users[0]; store.set('user', S.user); }

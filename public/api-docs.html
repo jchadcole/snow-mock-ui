@@ -80,6 +80,9 @@
   <div class="ep"><h3><span class="m POST">POST</span>/api/ims/{id}/close</h3>Wrap-up: <code>{wrapCode, notes, transcript:[{time, who, text}]}</code>. It sets Closed Complete (modified by GenesysUE) and logs the call on the taxpayer.</div>
   <div class="ep"><h3><span class="m GET">GET</span>/api/assist?scenario=|taxpayerId= &nbsp; <span class="m POST">POST</span>/api/incidents</h3>The Agent Assist script (utterances with knowledge articles and highlighted phrases), and create an incident.</div>
 
+  <div class="ep"><h3><span class="m GET">GET</span>/api/ui-text &nbsp; <span class="m PUT">PUT</span>/api/ui-text &nbsp; <span class="m DELETE">DELETE</span>/api/ui-text</h3>Demo text. <code>GET</code> returns <code>{defaults, overrides, effective}</code> (the brand's <code>ui</code> block, your changes, and the two merged). <code>PUT {"ui": {...}}</code> replaces the overrides, for example <code>{"ui":{"copilot":{"title":"Agent Copilot","checklists":[...]}}}</code>; <code>DELETE</code> clears them. Saved in <code>$DATA_DIR/ui-text.json</code>.</div>
+  <div class="ep"><h3><span class="m GET">GET</span>/api/wrap-summary?scenario=|taxpayerId=</h3>Wrap-up content for the Copilot Wrap-up Codes panel: <code>{topic, reason, resolution, actions, details, codes}</code>, worded from the taxpayer's record and any <code>ui.copilot.topics</code> overrides.</div>
+
   <h2>4. Workflow endpoints</h2>
   <div class="ep"><h3><span class="m GET">GET</span>/api/taxpayers?q=|phone=|last4=|lastName=|dob=|returnId=|accountNumber=|all=1</h3>Search (summaries).</div>
   <div class="ep"><h3><span class="m GET">GET</span>/api/taxpayers/{id}</h3>Full record: profile, returns with processing steps, refunds, assessments, payments, payment plan, notices, identity, representative, cases, activity.</div>
