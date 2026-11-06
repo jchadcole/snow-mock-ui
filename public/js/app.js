@@ -427,10 +427,10 @@
     const tr = script(t, ix);
     const lines = tr ? tr.slice(0, ix.tIdx || 0) : [];
     const live = tr ? `${lines.map((l) => `<div class="tline ${l.who}"><div class="tw">${l.who === 'agent' ? esc(S.user.name) : esc(t.fullName)}</div>${esc(l.text)}</div>`).join('')}${ix.tIdx < tr.length ? '<div class="tline va"><span class="live">Listening</span></div>' : ''}` : '';
-    const botPart = ix.bot ? `${botLines({ ...ix.bot, caller: t.firstName })}<div class="handoff"><span>Transferred to ${esc(S.user.name)}</span></div>` : '';
+    const botPart = ix.bot ? `${botLines({ ...ix.bot, caller: ix.bot.caller || t.firstName })}<div class="handoff"><span>Transferred to ${esc(S.user.name)}</span></div>` : '';
     const ltab = ix.ltab || 'interaction';
     const body = ltab === 'transcript'
-      ? (tr || ix.bot ? `<div class="transcript" id="transcript">${botPart}${live}</div>` : '<div class="empty">Live transcript is scripted for the demo stories (Charlotte Gong, and Tom Harper after a Pilot transfer). Other calls show interaction details only.</div>')
+      ? (tr || ix.bot ? `<div class="transcript" id="transcript">${botPart}${live}</div>` : '<div class="empty">Live transcript is scripted for a held refund (identity) and for calls transferred by Pilot. Other calls show interaction details only.</div>')
       : `${ix.bot ? botCard(ix.bot) : ''}<div class="ixmeta">
           <div><span>Phone</span><b>${esc(ix.phone || '-')}</b></div><div><span>Queue</span><span>${esc(ix.queue || '-')}</span></div>
           <div><span>Intent (virtual agent)</span><span>${esc(ix.intent || '-')}</span></div><div><span>Matched on</span><span>${esc(ix.matchedOn || '-')}</span></div>
@@ -598,7 +598,7 @@
       trace: () => { const r = t.returns.find((x) => x.id === arg); modal(`${ic('cash')} Refund trace`, `<div class="kv c3"><div><label>Amount</label><div class="v">${money(r.refund.adjusted || r.refund.amount)}</div></div><div><label>Issued</label><div class="v">${fmtD(r.refund.issued)}</div></div><div><label>Method</label><div class="v">${esc(r.refund.method)}</div></div><div><label>Trace number</label><div class="v">${esc(r.refund.trace || 'DD-' + digits(r.id).slice(-6))}</div></div><div><label>Account</label><div class="v">${t.bank ? `••••${esc(t.bank.last4)}` : 'Paper check'}</div></div></div>`, '<button class="btn primary" data-close>Close</button>'); outcome(t, 'Provided refund trace'); },
       save: () => toast('Record saved'), poaok: () => { outcome(t, `Confirmed representative ${t.representative.name}`); toast('Representative authorization confirmed'); render(); },
       apply: () => applyModal(t, (t.unapplied || []).find((u) => u.id === arg) || (t.unapplied || [])[0]),
-      botview: async () => { const bs = (t.botSessions || []).find((x) => x.id === arg) || (await api(`/api/bot-sessions?taxpayerId=${t.id}`)).find((x) => x.id === arg); if (!bs) return toast('Transcript not found'); modal(`${ic('spark')} ${esc(bs.botName)} virtual agent · ${esc(bs.outcome)}`, `${botCard(bs)}<div class="small muted" style="margin:8px 0">${fmtDT(bs.date)} · ${esc(bs.phone)} · conversation ${esc(bs.conversationId)}</div><div class="transcript" style="padding:0">${botLines({ ...bs, caller: t.firstName })}</div>`, '<button class="btn primary" data-close>Close</button>', { wide: true }); },
+      botview: async () => { const bs = (t.botSessions || []).find((x) => x.id === arg) || (await api(`/api/bot-sessions?taxpayerId=${t.id}`)).find((x) => x.id === arg); if (!bs) return toast('Transcript not found'); modal(`${ic('spark')} ${esc(bs.botName)} virtual agent · ${esc(bs.outcome)}`, `${botCard(bs)}<div class="small muted" style="margin:8px 0">${fmtDT(bs.date)} · ${esc(bs.phone)} · conversation ${esc(bs.conversationId)}</div><div class="transcript" style="padding:0">${botLines({ ...bs, caller: bs.caller || t.firstName })}</div>`, '<button class="btn primary" data-close>Close</button>', { wide: true }); },
       interp: () => { outcome(t, `Added ${t.language} interpreter`); toast(`${t.language} interpreter conferenced in (Genesys Cloud)`); render(); },
       hold: () => { S.interaction.held = !S.interaction.held; render(); }, mute: () => { S.interaction.muted = !S.interaction.muted; render(); },
       transfer: () => toast('Transfer is handled in Genesys Cloud (demo)'), wrap: () => wrapUpModal(t),
@@ -846,9 +846,11 @@
   async function pageGenesys(el) {
     const base = S.config.baseUrl || location.origin;
     const recent = await api('/api/screenpop/recent').catch(() => []);
-    const scen = await api('/api/bot-scenarios').catch(() => []);
-    const bots = await api('/api/bot-sessions').catch(() => []);
     const all = await api('/api/taxpayers?all=1');
+    S.scenTp = S.scenTp && all.some((x) => x.id === S.scenTp) ? S.scenTp : (all.find((x) => x.id === 'tp-1010') || all[0]).id;
+    const sel = all.find((x) => x.id === S.scenTp);
+    const scen = await api(`/api/bot-scenarios?taxpayerId=${S.scenTp}`).catch(() => []);
+    const bots = await api('/api/bot-sessions').catch(() => []);
     const samples = all.map((t) => [t.phone, `${t.fullName}${t.flags[0] ? ` · ${t.flags[0]}` : ''}`]);
     const seen = new Set(); const uniq = samples.filter(([n]) => !seen.has(n) && seen.add(n));
     const rep = all.find((t) => t.representative); if (rep) uniq.push([rep.phones.find((p) => p.type === 'Representative')?.number, `Representative calling for ${rep.fullName}`]);
@@ -868,9 +870,11 @@
           <div class="mono"><b>Script web page</b><br>${esc(base)}/pop?phone={{Customer phone variable}}&amp;conversationId={{Scripter.Interaction ID}}&amp;queue={{Scripter.Queue Name}}&amp;agent={{Scripter.Agent Email}}&amp;embed=1<br><br>
             <b>Interaction Widget</b><br>${esc(base)}/pop?conversationId={{gcConversationId}}&amp;embed=1<br><br>
             <b>By return ID or SSN last 4 (collected by the bot)</b><br>${esc(base)}/pop?returnId={{ReturnId}}&amp;conversationId={{Scripter.Interaction ID}}</div></div></div>
-      ${scen.length ? `<div class="card" style="margin-top:14px"><div class="card-h">${ic('spark', 'sm')} Pilot virtual agent handoffs <span class="small muted" style="font-weight:400">· the bot runs in Genesys Cloud; these buttons send the sample data it would post</span> <span class="r small muted">Caller: Tom Harper ${esc(S.records['tp-1010']?.phones[0]?.number || '(419) 555-0124')} · demo SSN 900-55-6789 · DOB 03/22/1978</span></div>
+      ${scen.length ? `<div class="card" style="margin-top:14px"><div class="card-h">${ic('spark', 'sm')} Pilot virtual agent handoffs <span class="small muted" style="font-weight:400">· the bot runs in Genesys Cloud; these buttons send the sample data it would post</span> </div>
+        <div class="frow" style="align-items:end"><div class="f" style="max-width:360px"><label>Caller (taxpayer the bot talks to)</label><select id="scTp">${all.map((x) => `<option value="${x.id}" ${x.id === S.scenTp ? 'selected' : ''}>${esc(x.fullName)} · ${esc(x.phone)}</option>`).join('')}</select></div>
+          <div class="f small muted">${esc(sel.fullName)} · ${esc(sel.phone)} · SSN ${esc(sel.tin)}${sel.dob ? ` · DOB ${esc(fmtD(sel.dob))}` : ''}. Every line Pilot and Agent Assist say uses this taxpayer's record. For the notice story, a billing notice and the mailed check are added if the record has none.</div></div>
         <div class="grid2">${scen.map((x) => `<div class="scen"><b>${esc(x.title)}</b><div class="small muted">${esc(x.intent)} · ${x.outcome === 'Contained' ? 'Genesys posts the finished Pilot session; ServiceNow logs a contained virtual agent interaction on the record.' : 'Genesys posts Pilot\'s session, then transfers. The screen pop carries Pilot\'s context and transcript.'}</div>
-          <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><button class="btn primary sm" data-scen="${x.id}">${x.outcome === 'Contained' ? 'Send contained session' : `${ic('phone', 'sm')} Send transfer + screen pop`}</button>${x.outcome === 'Transferred' ? `<a class="btn sm" href="/pop?scenario=${x.id}">Open as pop URL</a>` : ''}</div></div>`).join('')}</div>
+          <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><button class="btn primary sm" data-scen="${x.id}">${x.outcome === 'Contained' ? 'Send contained session' : `${ic('phone', 'sm')} Send transfer + screen pop`}</button>${x.outcome === 'Transferred' ? `<a class="btn sm" href="/pop?scenario=${x.id}&taxpayerId=${S.scenTp}">Open as pop URL</a>` : ''}</div></div>`).join('')}</div>
         ${bots.length ? `<table class="tbl" style="margin-top:10px"><tr><th>When</th><th>Caller</th><th>Intent</th><th>Outcome</th><th>Authenticated</th><th>Conversation</th></tr>${bots.slice(0, 8).map((b) => `<tr class="click" data-opentp="${b.taxpayerId}"><td class="nowrap">${fmtDT(b.date)}</td><td>${esc(b.phone)}</td><td>${esc(b.intent)}</td><td><span class="tag2 ${b.outcome === 'Contained' ? 'green' : 'blue'}">${esc(b.outcome)}</span></td><td>${b.authenticated ? 'Yes' : 'No'}</td><td class="small">${esc(b.conversationId)}</td></tr>`).join('')}</table>` : ''}</div>` : ''}
       <h3 class="card-h" style="margin-top:14px">Recent screen pops (${recent.length})</h3>
       <div class="card" style="padding:0"><table class="tbl"><tr><th>Received</th><th>Phone</th><th>Agent</th><th>Queue</th><th>Intent</th><th>Matches</th><th>Conversation</th></tr>${recent.map((x) => `<tr><td class="nowrap">${fmtDT(x.receivedAt)}</td><td>${esc(x.phone)}</td><td>${esc(x.agent)}</td><td>${esc(x.queue)}</td><td>${esc(x.intent)}</td><td>${x.taxpayerIds.length}</td><td class="small">${esc(x.conversationId)}</td></tr>`).join('') || '<tr><td colspan="7" class="empty">None yet</td></tr>'}</table></div></div>`;
@@ -878,13 +882,14 @@
     $('#gPush').onclick = async () => { const r = await fetch('/api/screenpop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: fieldVal('gPhone'), agent: fieldVal('gAgent'), queue: fieldVal('gQueue'), mediaType: fieldVal('gMedia'), intent: fieldVal('gIntent'), conversationId: conv() }) }).then((x) => x.json()); if (r.error) toast(esc(r.error), { cls: 'genesys' }); else if (!r.deliveredTo) toast('Screen pop sent, but no open workspace is listening for that agent', { cls: 'genesys' }); };
     $('#gUrl').onclick = () => { location.href = `/pop?${new URLSearchParams({ phone: fieldVal('gPhone'), conversationId: conv(), queue: fieldVal('gQueue'), mediaType: fieldVal('gMedia'), intent: fieldVal('gIntent') })}`; };
     $('#gSet').onclick = (e) => { e.preventDefault(); userMenu(); };
+    $('#scTp') && ($('#scTp').onchange = (e) => { S.scenTp = e.target.value; render(); });
     el.onclick = (e) => { const b = e.target.closest('[data-scen]'); if (b) return runScenario(scen.find((x) => x.id === b.dataset.scen)); const t = e.target.closest('[data-opentp]'); if (t && t.dataset.opentp) openTaxpayer(t.dataset.opentp); };
   }
 
   // Test without Genesys: sends the same sample Pilot session a Genesys data action would post (no bot is simulated here).
   async function runScenario(sc) {
     if (!sc) return;
-    const r = await act(() => api(`/api/bot-scenarios/${sc.id}/run`, { method: 'POST', body: { agent: S.settings.agentEmail || S.user.email, conversationId: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) } }));
+    const r = await act(() => api(`/api/bot-scenarios/${sc.id}/run`, { method: 'POST', body: { taxpayerId: sc.taxpayerId, agent: S.settings.agentEmail || S.user.email, conversationId: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) } }));
     const t = await loadTp(sc.taxpayerId, true);
     if (sc.outcome === 'Contained') toast(`Contained ${esc(sc.botName)} session logged on ${esc(t.fullName)}'s record`, { ms: 6000 });
     else if (!r.deliveredTo) toast('Handoff sent, but no workspace is listening for this agent', { cls: 'genesys' });
@@ -1104,7 +1109,7 @@
     if (side === 'learn') return `${head('Learning')}${(S.kbCache || []).slice(0, 6).map((k) => `<div class="kcard"><div class="kt"><span>${ic('kbdoc', 'sm')}</span><a data-kbopen="${k.id}">${esc(k.title)}</a></div><p>${esc(k.category)}</p></div>`).join('')}`;
     if (side === 'attach') return `${head('Attachments')}<div class="nomatch"><b>No attachments</b><div>Files added to this interaction appear here.</div></div>`;
     if (side === 'details') return `${head('Record details')}<div class="ixmeta">${[['Opened', fmtDT(rec.opened)], ['Phone', rec.phone], ['Queue', rec.queue], ['Intent', rec.intent], ['Conversation', rec.conversationId]].map(([k, v]) => `<div><span>${k}</span><b>${esc(v || '-')}</b></div>`).join('')}</div>${t ? `<button class="btn" data-c="opentp" style="margin-top:10px">Open taxpayer record</button>` : ''}`;
-    if (side === 'script') return `${head('Script')}${rec.bot ? botCard(rec.bot) + `<div class="transcript" style="padding:8px 0">${botLines({ ...rec.bot, caller: t?.firstName })}</div>` : '<div class="nomatch"><b>No script</b><div>The Genesys Cloud script for this queue appears here.</div></div>'}`;
+    if (side === 'script') return `${head('Script')}${rec.bot ? botCard(rec.bot) + `<div class="transcript" style="padding:8px 0">${botLines({ ...rec.bot, caller: rec.bot.caller || t?.firstName })}</div>` : '<div class="nomatch"><b>No script</b><div>The Genesys Cloud script for this queue appears here.</div></div>'}`;
     return `${head('Images')}<div class="nomatch"><b>No images</b></div>`;
   }
 
@@ -1219,7 +1224,7 @@
     let phone = (g('phone') || g('ani') || g('callerId') || '').replace(/^tel:|^sip:/i, '').replace(/@.*/, '');
     let conversationId = g('conversationId') || g('gcConversationId') || g('interactionId');
     if (g('scenario')) {
-      try { const r = await api(`/api/bot-scenarios/${encodeURIComponent(g('scenario'))}/run`, { method: 'POST', body: { push: false, phone, conversationId } }); conversationId = r.session.conversationId; phone = phone || r.session.phone; } catch (e) { toast(`Scenario: ${esc(e.message)}`, { cls: 'genesys' }); }
+      try { const r = await api(`/api/bot-scenarios/${encodeURIComponent(g('scenario'))}/run`, { method: 'POST', body: { push: false, phone, conversationId, taxpayerId: g('taxpayerId') } }); conversationId = r.session.conversationId; phone = phone || r.session.phone; } catch (e) { toast(`Scenario: ${esc(e.message)}`, { cls: 'genesys' }); }
     }
     let customerName = g('customerName'); let lookedUpQueue = '';
     if (!phone && !g('taxpayerId') && !g('returnId') && !g('last4') && conversationId && S.config.genesysLookup) {

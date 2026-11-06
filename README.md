@@ -29,7 +29,7 @@ Typical demo:
 4. Use the more menu (⋯) to verify identity or apply the suspense payment.
 5. Hang up, pick a wrap up code, then click **Submit & close**.
 
-The text on these screens comes from the brand's `ui` block in `lib/brands.js` and from `lib/assist.js`. To see the v2 taxpayer screen instead, set Settings > Screen pops open, or add `view=taxpayer` to a pop URL.
+All caller-specific text (names, notice numbers, amounts, dates, the Pilot transcript and Agent Assist lines) is worded from the selected taxpayer's record. On the Genesys page, pick the **Caller** in the Pilot card to run either scenario for any taxpayer. The remaining screen text comes from the brand's `ui` block in `lib/brands.js` and from `lib/assist.js`. To see the v2 taxpayer screen instead, set Settings > Screen pops open, or add `view=taxpayer` to a pop URL.
 
 ## What works
 

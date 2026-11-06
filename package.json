@@ -1,6 +1,6 @@
 {
   "name": "snow-mock-ui",
-  "version": "3.0.2",
+  "version": "3.1.0",
   "description": "Mock ServiceNow-style CSM workspace for a state tax agency, with screen-pop and taxpayer lookup APIs for Genesys Cloud demos. Fictional data only.",
   "main": "server.js",
   "private": true,

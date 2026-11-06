@@ -2,6 +2,22 @@
 
 All notable changes to the SNOW Mock UI. Versions follow [semantic versioning](https://semver.org): MAJOR for a rebuild or breaking change to URLs, APIs or data actions; MINOR for new screens, scenarios or brands; PATCH for fixes. Each release is tagged `vX.Y.Z` in git.
 
+## 3.1.0 (2026-11-06)
+
+### Changed
+- Every screen pop line is now worded from the selected taxpayer's record, with nothing fixed to Tom or Charlotte. That covers:
+  - the Pilot handoff card, summary and transcript;
+  - the Agent Assist suggestions;
+  - the internal transcript;
+  - the v2 live transcripts.
+  The wording uses the caller's name, SSN last 4, date of birth, refund, notice number and amount, and check dates. For a business, the caller is the contact on file.
+- Agent Assist picks its script from the call's Pilot scenario, or else from the record: suspense payment, refund held for identity, documentation review, information request, balance due or refund.
+
+### Added
+- The **Pilot virtual agent handoffs** card on the Genesys page has a **Caller** picker. You can run both Pilot scenarios for any taxpayer. Pop URLs take `taxpayerId` too, for example `/pop?scenario=notice-paid&taxpayerId=tp-1002`.
+- For the notice story, a taxpayer with no open billing notice or mailed check gets demo ones added (amounts from the balance), so **Apply suspense payment** works for anyone.
+- `GET /api/bot-scenarios?taxpayerId=`, and `taxpayerId` in `POST /api/bot-scenarios/{id}/run`.
+
 ## 3.0.2 (2026-11-05)
 
 ### Changed

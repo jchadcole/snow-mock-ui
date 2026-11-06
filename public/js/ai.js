@@ -107,27 +107,36 @@
 
   // Scripted live transcript for the main demo caller. Lines with `gate` wait until that outcome happens.
   function transcript(t, brand, agentFirst, ix) {
-    if (t.id === 'tp-1010' && ix && ix.bot && ix.bot.scenario === 'notice-paid') {
-      const n = t.notices.find((x) => x.id === 'NTC0001234') || {}; const u = (t.unapplied || [])[0] || {};
+    if (ix && ix.bot && ix.bot.scenario === 'notice-paid') {
+      const n = t.notices.find((x) => x.amount && !/paid|resolved/i.test(x.status)) || t.notices.find((x) => x.amount) || {};
+      const u = (t.unapplied || []).find((x) => /unapplied/i.test(x.status)) || (t.unapplied || [])[0] || {};
+      const short = String(n.id || '').replace(/^\D+/, '').replace(/^0+/, ''); const amt = money(n.amount || u.amount || 0);
+      const first = t.firstName || t.fullName; const last4 = String(t.tin || '').replace(/\D/g, '').slice(-4);
+      const dob = t.dob ? new Date(t.dob + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'on file';
       return [
-        { who: 'agent', text: `Hi Tom, this is ${agentFirst} with the ${brand.agency}. Pilot passed along everything you discussed: notice 1234 for ${n.taxYear || ''}, the $2,200 balance, and the check you mailed on July 1st. You won't need to repeat any of that. Before I look at your account, can you confirm your date of birth and the last four of your Social Security number?` },
-        { who: 'cust', text: "Sure. It's March 22nd, 1978, and the last four are 6789." },
-        { who: 'agent', gate: 'identity', text: `Thank you, Tom, you're verified. Good news: I found your check. We received it on ${fmtD(u.received)}, but there was no payment voucher or notice number with it, so it was held in suspense instead of being applied to your ${n.taxYear || ''} balance. I'm applying it now.` },
-        { who: 'agent', gate: 'apply', text: "Done. Your $2,200 check is applied, your balance is now zero and notice 1234 is resolved. You don't need to get the canceled check from your bank or submit a response online. Would you like an email confirming that?" },
+        { who: 'agent', text: `Hi ${first}, this is ${agentFirst} with the ${brand.agency}. Pilot passed along everything you discussed: notice ${short} for ${n.taxYear || ''}, the ${amt} balance, and the check you mailed on ${fmtD(u.mailed)}. You won't need to repeat any of that. Before I look at your account, can you confirm your date of birth and the last four of your Social Security number?` },
+        { who: 'cust', text: `Sure. It's ${dob}, and the last four are ${last4}.` },
+        { who: 'agent', gate: 'identity', text: `Thank you, ${first}, you're verified. Good news: I found your check. We received it on ${fmtD(u.received)}, but there was no payment voucher or notice number with it, so it was held in suspense instead of being applied to your ${n.taxYear || ''} balance. I'm applying it now.` },
+        { who: 'agent', gate: 'apply', text: `Done. Your ${amt} check is applied, your balance is now zero and notice ${short} is resolved. You don't need to get the canceled check from your bank or submit a response online. Would you like an email confirming that?` },
         { who: 'cust', text: "Yes, please. That's a relief." },
         { who: 'agent', gate: 'email', text: "I've sent it to the email on file. Is there anything else I can help you with today?" },
         { who: 'cust', text: "No, that's everything. Thank you." },
       ];
     }
-    if (t.id !== 'tp-1001') return null;
-    const r = t.returns[0]; const amt = money(r.refund ? r.refund.amount : 0);
+    const r = t.returns.find((x) => x.refund && /hold/i.test(x.refund.status) && /identity/i.test(x.refund.hold || '')) || (t.id === 'tp-1001' ? t.returns[0] : null);
+    if (!r) return null;
+    const amt = money(r.refund ? r.refund.amount : 0); const last4 = String(t.tin || '').replace(/\D/g, '').slice(-4);
+    const dob = t.dob ? new Date(t.dob + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'on file';
+    const bad = t.notices.find((n) => /undeliverable/i.test(n.status) && n.sentTo);
+    const prior = (t.activities || []).find((a) => ['Chat', 'Phone'].includes(a.type) && a.direction === 'Inbound');
+    const ago = prior ? Math.max(1, Math.round((Date.now() - new Date(prior.date)) / 864e5)) : 0;
     return [
       { who: 'agent', text: `Hi, ${t.firstName}. Thank you for calling the ${brand.agency}. My name is ${agentFirst} and it will be a pleasure to help you today. Are you calling about the refund on your ${r.taxYear} ${r.form}?` },
-      { who: 'cust', text: `Hi, ${agentFirst}. Yes, four days ago I was told a letter was coming so I could verify my identity, but it never arrived and my refund is still on hold.` },
-      { who: 'agent', text: `I understand, ${t.firstName}, this is frustrating and I apologize. It was actually me who chatted with you four days ago, and I have all the information here. I can verify your identity with you right now. Can you confirm your date of birth and the last four of your Social Security number?` },
-      { who: 'cust', text: `Sure, it's April 12th, 1989, and the last four are 4471.` },
-      { who: 'agent', gate: 'identity', text: `Thank you, you're verified. I see the letter went to your old address on Old Mill Road, which is why it never reached you. Your current address on Neil Avenue is on file, and I'm releasing your refund of ${amt} now.` },
-      { who: 'agent', gate: 'release', text: `Your refund is released. It's set to a paper check, but I can switch it to direct deposit so it arrives about a week sooner. Would that work for you?` },
+      { who: 'cust', text: `Hi, ${agentFirst}. Yes, ${prior ? `${ago} day${ago === 1 ? '' : 's'} ago ` : ''}I was told a letter was coming so I could verify my identity, but it never arrived and my refund is still on hold.` },
+      { who: 'agent', text: `I understand, ${t.firstName}, this is frustrating and I apologize.${prior ? ` I can see your ${prior.type.toLowerCase()} with us from ${ago} day${ago === 1 ? '' : 's'} ago, and I have all the information here.` : ''} I can verify your identity with you right now. Can you confirm your date of birth and the last four of your Social Security number?` },
+      { who: 'cust', text: `Sure, it's ${dob}, and the last four are ${last4}.` },
+      { who: 'agent', gate: 'identity', text: `Thank you, you're verified.${bad ? ` I see the letter went to your old address at ${bad.sentTo.replace(/\.$/, '')}, which is why it never reached you. Your current address on ${t.address.line.replace(/^[\d-]+\s*/, '').replace(/\.$/, '')} is on file, and` : ' Your letter may have been delayed, so'} I'm releasing your refund of ${amt} now.` },
+      { who: 'agent', gate: 'release', text: `Your refund is released. It's set to ${String(r.refund.method || 'paper check').toLowerCase().replace(/^paper check$/, 'a paper check')}, but I can switch it to direct deposit so it arrives about a week sooner. Would that work for you?` },
       { who: 'cust', text: `Yes, ${agentFirst}. That actually works for me.` },
       { who: 'agent', gate: 'dd', text: `Done. Would you like me to email you a confirmation?` },
       { who: 'cust', text: 'Yes, please.' },

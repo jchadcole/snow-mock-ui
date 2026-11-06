@@ -10,6 +10,7 @@ const { seed } = require('./lib/seed');
 const { getBrand, listBrands } = require('./lib/brands');
 const { scenarios } = require('./lib/scenarios');
 const { assistScript } = require('./lib/assist');
+const { ensureNoticeStory } = require('./lib/facts');
 
 // ---------- version ----------
 // The release version lives in package.json (semantic versioning; history in CHANGELOG.md, git tags vX.Y.Z).
@@ -51,7 +52,7 @@ function freshDb() {
   d.taxpayers.forEach((t) => t.activities.filter((a) => ['Phone', 'Chat'].includes(a.type) && a.direction === 'Inbound').forEach((a) => past.push([t, a])));
   d.cases.filter((c) => c.channel === 'Phone').forEach((c) => { const t = d.taxpayers.find((x) => x.id === c.taxpayerId); if (t) past.push([t, { type: 'Phone', date: c.opened, by: c.assignedTo, subject: c.shortDescription, text: `Case ${c.number} opened.`, caseNumber: c.number }]); });
   past.sort((x, y) => x[1].date.localeCompare(y[1].date)).forEach(([t, a]) => {
-    d.ims.push({ id: `IMS${String(d.imsSeq++).padStart(7, '0')}`, number: '', state: 'Closed Complete', type: a.type, taxpayerId: t.id, account: t.businessName || `${t.firstName} ${t.lastName}`, contact: t.type === 'Business' ? (t.contactName || t.businessName) : `${t.firstName} ${t.lastName}`, assignedTo: a.by && a.by !== 'System' ? a.by : agent, verified: true, shortDescription: a.subject || 'Agent Needed', transcript: [], opened: a.date, closed: a.date, wrapCode: a.wrapCode || '', notes: a.text || '', feedback: [], cases: a.caseNumber ? [a.caseNumber] : [], modifiedBy: '', phone: (t.phones[0] || {}).number || '' });
+    d.ims.push({ id: `IMS${String(d.imsSeq++).padStart(7, '0')}`, number: '', state: 'Closed Complete', type: a.type, taxpayerId: t.id, account: t.businessName || `${t.firstName} ${t.lastName}`, contact: t.type === 'Business' ? String(t.contact || t.contactName || t.businessName).replace(/\s*\(.*\)$/, '') : `${t.firstName} ${t.lastName}`, assignedTo: a.by && a.by !== 'System' ? a.by : agent, verified: true, shortDescription: a.subject || 'Agent Needed', transcript: [], opened: a.date, closed: a.date, wrapCode: a.wrapCode || '', notes: a.text || '', feedback: [], cases: a.caseNumber ? [a.caseNumber] : [], modifiedBy: '', phone: (t.phones[0] || {}).number || '' });
     if (a.id) a.imsNumber = d.ims[d.ims.length - 1].id;
   });
   d.ims.forEach((x) => { x.number = x.id; });
@@ -354,7 +355,7 @@ function newIms(b) {
   const bot = b.botSessionId ? db.botSessions.find((x) => x.id === b.botSessionId) : (b.conversationId ? db.botSessions.find((x) => x.conversationId === b.conversationId) : null);
   const x = {
     id: `IMS${String(db.imsSeq++).padStart(7, '0')}`, state: b.state || 'New', type: b.mediaType && b.mediaType !== 'voice' ? 'Chat' : 'Phone', taxpayerId: t ? t.id : '',
-    account: t ? (t.businessName || nameOf(t)) : '', contact: t ? (t.type === 'Business' ? (t.contactName || t.businessName) : nameOf(t)) : (b.customerName || ''),
+    account: t ? (t.businessName || nameOf(t)) : '', contact: t ? (t.type === 'Business' ? String(t.contact || t.contactName || t.businessName).replace(/\s*\(.*\)$/, '') : nameOf(t)) : (b.customerName || ''),
     assignedTo: b.assignedTo || '', verified: !!(t && (t.identity.status === 'Verified' || (bot && bot.authenticated))), shortDescription: b.shortDescription || (bot && bot.outcome === 'Transferred' ? brandUi().recordTitle : b.intent || brandUi().recordTitle),
     transcript: [], opened: nowLocal(), closed: '', wrapCode: '', notes: '', feedback: [], cases: [], modifiedBy: '', phone: fmtPhone(b.phone || (t ? t.phones[0].number : '')),
     conversationId: b.conversationId || '', queue: b.queue || (bot && bot.queue) || '', intent: b.intent || (bot && bot.intent) || '', botSessionId: bot ? bot.id : '', scenario: bot ? bot.scenario : '', location: b.location || callerLocation(t),
@@ -386,7 +387,7 @@ route('POST', '/api/ims/:id/close', async (req, url, { id }) => {
 });
 route('GET', '/api/assist', (req, url) => {
   const p = Object.fromEntries(url.searchParams);
-  return assistScript(p.scenario, p.taxpayerId).map((l) => { const k = l.kb && db.kb.find((a) => a.id === l.kb); return { ...l, article: k ? { id: k.id, title: k.title, text: `${k.summary}${k.body ? ' ' + k.body : ''}` } : null }; });
+  return assistScript(p.scenario, getTp(p.taxpayerId), db.brand, db.taxYear).map((l) => { const k = l.kb && db.kb.find((a) => a.id === l.kb); return { ...l, article: k ? { id: k.id, title: k.title, text: `${k.summary}${k.body ? ' ' + k.body : ''}` } : null }; });
 });
 route('POST', '/api/incidents', async (req) => {
   const b = await readBody(req); const t = getTp(b.taxpayerId);
@@ -417,12 +418,14 @@ route('POST', '/api/taxpayers/:id/unapplied/:uid/apply', async (req, url, { id, 
 });
 
 // ---------- virtual agent (Pilot) sessions ----------
-route('GET', '/api/bot-scenarios', () => scenarios(db.brand, db.taxYear));
+// Pilot sample sessions, worded from the chosen taxpayer (default: the demo caller Tom Harper, tp-1010).
+const scenTp = (id) => getTp(id || 'tp-1010') || getTp('tp-1010') || db.taxpayers[0];
+route('GET', '/api/bot-scenarios', (req, url) => scenarios(db.brand, db.taxYear, scenTp(url.searchParams.get('taxpayerId'))));
 function saveBotSession(b) {
   const t = b.taxpayerId ? getTp(b.taxpayerId) : (b.phone ? search({ phone: b.phone })[0] : null);
   const s = {
     id: newId('bot'), date: nowLocal(), conversationId: b.conversationId || `demo-${Date.now()}`, phone: fmtPhone(b.phone || (t ? t.phones[0].number : '')), taxpayerId: t ? t.id : '',
-    botName: b.botName || 'Pilot', scenario: b.scenario || '', intent: b.intent || '', taxType: b.taxType || '', confidence: Number(b.confidence || 0),
+    botName: b.botName || 'Pilot', caller: b.caller || (t ? (t.type === 'Business' ? String(t.contact || t.businessName).replace(/\s*\(.*\)$/, '').split(' ')[0] : t.firstName) : ''), scenario: b.scenario || '', intent: b.intent || '', taxType: b.taxType || '', confidence: Number(b.confidence || 0),
     outcome: b.outcome || 'Contained', queue: b.queue || '', authenticated: b.authenticated === true || b.authenticated === 'true', authMethod: b.authMethod || '', slots: Object.fromEntries(Object.entries(b.slots || {}).filter(([, v]) => v !== '' && v != null)), linksShared: b.linksShared || [],
     transcript: Array.isArray(b.transcript) ? b.transcript : String(b.transcript || '').split('\n').map((x) => x.trim()).filter(Boolean).map((line) => { const m = line.match(/^([^:]{1,30}):\s*(.*)$/); if (!m) return { who: 'bot', text: line }; return { who: m[1].trim().toLowerCase() === String(b.botName || 'Pilot').toLowerCase() ? 'bot' : 'cust', text: m[2] }; }), summary: b.summary || '',
   };
@@ -437,8 +440,10 @@ route('POST', '/api/bot-sessions', async (req) => created(saveBotSession(await r
 route('GET', '/api/bot-sessions', (req, url) => { const c = url.searchParams.get('conversationId'); const tid = url.searchParams.get('taxpayerId'); return db.botSessions.filter((s) => (!c || s.conversationId === c) && (!tid || s.taxpayerId === tid)); });
 // Run a scripted scenario: saves the bot session; for a transfer, also pushes the screen pop to `agent` unless push is false.
 route('POST', '/api/bot-scenarios/:id/run', async (req, url, { id }) => {
-  const sc = scenarios(db.brand, db.taxYear).find((x) => x.id === id); if (!sc) throw nf(); const b = await readBody(req);
-  const t = getTp(sc.taxpayerId); const phone = b.phone || t.phones[0].number;
+  const b = await readBody(req); const t = scenTp(b.taxpayerId);
+  if (id === 'notice-paid') ensureNoticeStory(t, db.taxYear, todayInTz());
+  const sc = scenarios(db.brand, db.taxYear, t).find((x) => x.id === id); if (!sc) throw nf();
+  const phone = b.phone || t.phones[0].number;
   const s = saveBotSession({ ...sc, scenario: sc.id, phone, taxpayerId: t.id, conversationId: b.conversationId });
   let delivered = 0;
   if (sc.outcome === 'Transferred' && b.push !== false) {
