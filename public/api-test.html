@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>API credential test</title>
+<link rel="icon" href="/img/favicon.svg" type="image/svg+xml">
+<style>
+  :root { --nav: #0c2340; --ink: #1d2327; --muted: #67737a; --line: #d9dee1; --bg: #f4f6f7; --code: #eef1f3; --ok: #1f7a46; --okbg: #e3f4ea; --bad: #b3261e; --badbg: #fbe7e5; --warn: #8a5a00; --warnbg: #fff3d6; --accent: #1b5694; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.55 "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif; color: var(--ink); background: var(--bg); }
+  header { background: var(--nav); color: #fff; padding: 20px 28px; } header h1 { margin: 0; font-size: 21px; font-weight: 600; } header p { margin: 4px 0 0; opacity: .85; max-width: 80ch; }
+  main { max-width: 980px; margin: 0 auto; padding: 18px 20px 60px; display: grid; gap: 16px; }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; }
+  h2 { font-size: 15px; margin: 0 0 10px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; } @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
+  label { display: block; font-size: 12.5px; color: var(--muted); margin-bottom: 3px; }
+  input, select { width: 100%; font: inherit; padding: 7px 9px; border: 1px solid #aeb9c0; border-radius: 4px; background: #fff; color: var(--ink); min-width: 0; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; } .row > * { min-width: 0; }
+  button { font: inherit; padding: 8px 14px; border-radius: 4px; border: 1px solid #aeb9c0; background: #fff; color: var(--ink); cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; } button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .small { font-size: 12.5px; color: var(--muted); }
+  code, pre { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px; background: var(--code); border-radius: 4px; }
+  code { padding: 1px 4px; } pre { padding: 10px 12px; margin: 6px 0; overflow-x: auto; white-space: pre-wrap; word-break: break-all; }
+  .verdict { display: flex; gap: 12px; align-items: center; padding: 12px 14px; border-radius: 6px; font-weight: 600; font-size: 15px; }
+  .verdict.ok { background: var(--okbg); color: var(--ok); } .verdict.bad { background: var(--badbg); color: var(--bad); } .verdict.warn { background: var(--warnbg); color: var(--warn); }
+  .verdict small { font-weight: 400; color: inherit; opacity: .9; margin-left: auto; text-align: right; }
+  ul.hints { margin: 10px 0 0; padding-left: 20px; } ul.hints li { margin: 4px 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; } td, th { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .pill { display: inline-block; border-radius: 10px; padding: 0 8px; font-size: 12px; font-weight: 600; } .pill.ok { background: var(--okbg); color: var(--ok); } .pill.bad { background: var(--badbg); color: var(--bad); } .pill.warn { background: var(--warnbg); color: var(--warn); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<header><h1>API credential test</h1><p>Check the API key by hand when a Genesys data action or a curl call is rejected. It sends your key to <code>/api/auth-check</code>, which says whether the key matched, how it arrived, and what looks wrong. The key is never stored and never echoed back.</p></header>
+<main>
+  <section class="card">
+    <h2>1. What to test</h2>
+    <div class="grid">
+      <div><label for="base">Server</label><input id="base" autocomplete="off" spellcheck="false"></div>
+      <div><label for="key">API key (the <code>API_KEY</code> value from Render &gt; Environment)</label><div class="row"><input id="key" type="password" autocomplete="off" spellcheck="false" style="flex:1"><button type="button" id="show">Show</button></div></div>
+      <div><label for="style">How to send the key</label><select id="style">
+        <option value="x-api-key">x-api-key header (what the Genesys data actions use)</option>
+        <option value="bearer">Authorization: Bearer</option>
+        <option value="basic">Authorization: Basic (key as the password)</option>
+        <option value="query">?apiKey= in the URL</option>
+        <option value="none">Send no credentials</option></select></div>
+      <div><label for="ep">Request</label><select id="ep">
+        <option value="check">GET /api/auth-check (explains the result)</option>
+        <option value="lookup">GET /api/taxpayers/lookup?phone= (a real secured route)</option>
+        <option value="health">GET /api/health (no key needed, proves the server is reachable)</option></select></div>
+      <div id="phoneBox" hidden><label for="phone">Phone for the lookup</label><input id="phone" value="6145550184" inputmode="tel"></div>
+    </div>
+    <div class="row" style="margin-top:12px"><button class="primary" type="button" id="send">Send test</button><button type="button" id="all">Try every way of sending the key</button><span class="small" id="busy" hidden>Working…</span></div>
+  </section>
+
+  <section class="card" id="out" hidden>
+    <h2>2. Result</h2>
+    <div id="verdict" class="verdict"></div>
+    <ul class="hints" id="hints"></ul>
+    <div id="recvWrap" hidden><h2 style="margin-top:14px">What the server received</h2><table><thead><tr><th>Where</th><th>Characters</th><th>Problems</th></tr></thead><tbody id="recv"></tbody></table></div>
+    <h2 style="margin-top:14px">Response</h2><pre id="raw"></pre>
+  </section>
+
+  <section class="card" id="allOut" hidden>
+    <h2>Every way of sending the key</h2>
+    <table><thead><tr><th>Method</th><th>Result</th><th>HTTP</th></tr></thead><tbody id="allRows"></tbody></table>
+    <p class="small" id="allNote"></p>
+  </section>
+
+  <section class="card">
+    <h2>The same request in curl</h2>
+    <div class="row"><label style="margin:0"><input type="checkbox" id="real" style="width:auto"> Include my real key (don't paste it into chat or tickets)</label></div>
+    <pre id="curl"></pre>
+    <div class="row"><button type="button" id="copy">Copy curl</button><span class="small" id="copied" hidden>Copied</span></div>
+    <p class="small">Run it from a terminal. If curl is accepted but a Genesys data action is rejected, the key in the data action's credentials has a typo, extra spaces, or belongs to a different environment. <code>x-api-key: ${credentials.apiKey}</code> is what the data actions in <code>genesys/</code> send.</p>
+  </section>
+
+  <section class="card">
+    <h2>If it fails</h2>
+    <ul class="hints">
+      <li><b>Could not reach the server:</b> check the Server box (no trailing path), and that the Render service is awake. The first request after idle can take a minute.</li>
+      <li><b>401 with "no credentials arrived":</b> the header never left your client. In a data action, confirm the credential is attached to the integration and the header name is spelled exactly <code>x-api-key</code>.</li>
+      <li><b>401 with "does not match":</b> compare against Render &gt; Environment &gt; <code>API_KEY</code>. If Render generated the key, it changes when the service is recreated.</li>
+      <li><b>200 but "API_KEY is not set":</b> the server is open, so a wrong key still works. Set <code>API_KEY</code> to require one.</li>
+    </ul>
+  </section>
+</main>
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var store = { get: function (k) { try { return localStorage.getItem('apitest.' + k) || ''; } catch (e) { return ''; } }, set: function (k, v) { try { localStorage.setItem('apitest.' + k, v); } catch (e) { /* ignore */ } } };
+  $('base').value = store.get('base') || location.origin;
+  $('style').value = store.get('style') || 'x-api-key'; $('ep').value = store.get('ep') || 'check';
+  // The key is kept in this tab only (sessionStorage), never sent anywhere except the server you name.
+  try { $('key').value = sessionStorage.getItem('apitest.key') || ''; } catch (e) { /* ignore */ }
+
+  function build(style, key, ep) {
+    var base = $('base').value.trim().replace(/\/+$/, '');
+    var path = ep === 'health' ? '/api/health' : ep === 'lookup' ? '/api/taxpayers/lookup?phone=' + encodeURIComponent($('phone').value.trim()) : '/api/auth-check';
+    var headers = { 'X-Auth-Test': '1' }; var url = base + path;
+    if (ep !== 'health') {
+      if (style === 'x-api-key') headers['x-api-key'] = key;
+      else if (style === 'bearer') headers['Authorization'] = 'Bearer ' + key;
+      else if (style === 'basic') headers['Authorization'] = 'Basic ' + btoa('genesys:' + key);
+      else if (style === 'query') url += (url.indexOf('?') < 0 ? '?' : '&') + 'apiKey=' + encodeURIComponent(key);
+    }
+    return { url: url, headers: headers };
+  }
+  function curlFor(r, key, real) {
+    var shown = real ? key : '$API_KEY';
+    var parts = ["curl -i"];
+    Object.keys(r.headers).forEach(function (h) {
+      if (h === 'X-Auth-Test') return;
+      var v = r.headers[h];
+      if (h === 'Authorization' && /^Basic /.test(v)) parts.push("-u 'genesys:" + shown + "'");
+      else parts.push("-H '" + h + ': ' + (real ? v : v.replace(key, shown)) + "'");
+    });
+    var u = r.url; if (!real && key) u = u.replace(encodeURIComponent(key), '$API_KEY');
+    parts.push('"' + u.replace(/"/g, '%22') + '"');
+    return (real ? '' : 'export API_KEY="paste-your-key-here"\n') + parts.join(' \\\n  ');
+  }
+  function refreshCurl() { var r = build($('style').value, $('key').value, $('ep').value); $('curl').textContent = curlFor(r, $('key').value, $('real').checked); }
+  function sync() { $('phoneBox').hidden = $('ep').value !== 'lookup'; store.set('base', $('base').value); store.set('style', $('style').value); store.set('ep', $('ep').value); try { sessionStorage.setItem('apitest.key', $('key').value); } catch (e) { /* ignore */ } refreshCurl(); }
+  ['base', 'key', 'style', 'ep', 'phone', 'real'].forEach(function (id) { $(id).addEventListener('input', sync); $(id).addEventListener('change', sync); });
+  $('show').onclick = function () { var k = $('key'); k.type = k.type === 'password' ? 'text' : 'password'; $('show').textContent = k.type === 'password' ? 'Show' : 'Hide'; };
+  $('copy').onclick = function () {
+    var t = $('curl').textContent;
+    var done = function () { $('copied').hidden = false; setTimeout(function () { $('copied').hidden = true; }, 1500); };
+    try { navigator.clipboard.writeText(t).then(done, function () { sel(); }); } catch (e) { sel(); }
+    function sel() { var r = document.createRange(); r.selectNodeContents($('curl')); var s = getSelection(); s.removeAllRanges(); s.addRange(r); }
+  };
+
+  function call(style, key, ep) {
+    var r = build(style, key, ep); var t0 = performance.now();
+    return fetch(r.url, { headers: r.headers, cache: 'no-store' }).then(function (res) {
+      return res.text().then(function (txt) { var j = null; try { j = JSON.parse(txt); } catch (e) { /* not json */ } return { status: res.status, ms: Math.round(performance.now() - t0), text: txt, json: j }; });
+    }, function (err) { return { error: err.message || 'Network error', ms: Math.round(performance.now() - t0) }; });
+  }
+  function td(t) { var c = document.createElement('td'); c.textContent = t; return c; }
+  function show(res, ep, style) {
+    $('out').hidden = false; var v = $('verdict'); var hints = $('hints'); hints.innerHTML = ''; $('recv').innerHTML = ''; $('recvWrap').hidden = true;
+    var add = function (t) { var li = document.createElement('li'); li.textContent = t; hints.appendChild(li); };
+    if (res.error) {
+      v.className = 'verdict bad'; v.innerHTML = ''; v.appendChild(document.createTextNode('Could not reach the server')); var s = document.createElement('small'); s.textContent = res.error; v.appendChild(s);
+      add('Check the Server box, that the Render service is awake, and that you are online. If the server is on another host and this page is not, the browser may also block the call; use the curl command below instead.');
+      $('raw').textContent = ''; return;
+    }
+    var j = res.json; var label; var cls;
+    if (ep === 'health') { cls = res.status === 200 ? 'ok' : 'bad'; label = res.status === 200 ? 'Server reachable (no key needed for this call)' : 'Server answered with an error'; }
+    else if (ep === 'check' && j) { cls = j.ok ? (j.keyRequired ? 'ok' : 'warn') : 'bad'; label = j.ok ? (j.keyRequired ? 'Credentials accepted' : 'Accepted, but the server has no API_KEY set') : 'Credentials rejected'; (j.hints || []).forEach(add); (j.received || []).forEach(function (r) { $('recvWrap').hidden = false; var tr = document.createElement('tr'); tr.appendChild(td(r.where)); tr.appendChild(td(String(r.characters))); tr.appendChild(td((r.issues || []).join('; ') || 'none')); $('recv').appendChild(tr); }); if (j.ok && j.method) add('Matched through: ' + j.method + '.'); }
+    else { cls = res.status >= 200 && res.status < 300 ? 'ok' : res.status === 401 ? 'bad' : 'warn'; label = res.status === 401 ? 'Rejected (401): the key was not accepted' : res.status >= 200 && res.status < 300 ? 'Accepted' : 'Server answered ' + res.status; if (res.status === 401) add('Run the "/api/auth-check" request for an explanation of what arrived.'); else if (res.status >= 200 && res.status < 300) add('If the server has no API_KEY set, this call is open to everyone. Run /api/auth-check to see.'); }
+    v.className = 'verdict ' + cls; v.innerHTML = ''; v.appendChild(document.createTextNode(label)); var sm = document.createElement('small'); sm.textContent = 'HTTP ' + res.status + ' in ' + res.ms + ' ms'; v.appendChild(sm);
+    $('raw').textContent = j ? JSON.stringify(j, null, 2) : res.text.slice(0, 2000);
+  }
+  $('send').onclick = function () {
+    sync(); $('busy').hidden = false; $('allOut').hidden = true; $('out').hidden = true;
+    call($('style').value, $('key').value, $('ep').value).then(function (r) { $('busy').hidden = true; show(r, $('ep').value, $('style').value); $('out').scrollIntoView({ behavior: 'smooth', block: 'nearest' }); });
+  };
+  $('all').onclick = function () {
+    sync(); $('busy').hidden = false; $('out').hidden = true;
+    var styles = [['x-api-key', 'x-api-key header'], ['bearer', 'Authorization: Bearer'], ['basic', 'Authorization: Basic'], ['query', '?apiKey= in the URL'], ['none', 'No credentials']];
+    var body = $('allRows'); body.innerHTML = ''; var open = false; var chain = Promise.resolve(); var results = {};
+    styles.forEach(function (s) { chain = chain.then(function () { return call(s[0], $('key').value, 'check').then(function (r) { results[s[0]] = r;
+      var tr = document.createElement('tr'); tr.appendChild(td(s[1])); var c = document.createElement('td'); var p = document.createElement('span');
+      if (r.error) { p.className = 'pill bad'; p.textContent = 'Unreachable'; } else if (r.json && r.json.ok && !r.json.keyRequired) { p.className = 'pill warn'; p.textContent = 'Open (no API_KEY set)'; open = true; } else if (r.json && r.json.ok) { p.className = 'pill ok'; p.textContent = 'Accepted'; } else { p.className = 'pill bad'; p.textContent = 'Rejected'; }
+      c.appendChild(p); tr.appendChild(c); tr.appendChild(td(r.error ? r.error : String(r.status))); body.appendChild(tr); }); }); });
+    chain.then(function () {
+      $('busy').hidden = true; $('allOut').hidden = false; var n = $('allNote');
+      var acc = styles.filter(function (s) { var r = results[s[0]]; return s[0] !== 'none' && r.json && r.json.ok && r.json.keyRequired; });
+      n.textContent = open ? 'This server has no API_KEY set, so every request is accepted.' : acc.length === 4 ? 'The key works every way. If a data action still fails, the problem is in how the data action is configured.' : acc.length ? 'The key works only when sent: ' + acc.map(function (s) { return s[1]; }).join(', ') + '. Make your client send it that way.' : 'No way of sending this key was accepted. Compare it with API_KEY in Render > Environment.';
+      $('allOut').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  };
+  sync();
+})();
+</script>
+</body>
+</html>

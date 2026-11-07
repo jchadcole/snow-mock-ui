@@ -2,6 +2,14 @@
 
 All notable changes to the SNOW Mock UI. Versions follow [semantic versioning](https://semver.org): MAJOR for a rebuild or breaking change to URLs, APIs or data actions; MINOR for new screens, scenarios or brands; PATCH for fixes. Each release is tagged `vX.Y.Z` in git.
 
+## 3.3.1 (2026-11-07)
+
+### Added
+- **API credential test** at `/api/auth-check` and `/api-test.html` (linked from Settings). It checks the `API_KEY` the way the secured routes do, says whether it matched and how it arrived (`x-api-key`, Bearer, Basic or `?apiKey=`), and flags common problems: no credentials, spaces or quote marks around the key, "Bearer" added twice, a different key. The test page can try every way of sending the key, call a real secured route, and show the same request as a curl command. The key is never stored or echoed.
+
+### Changed
+- The same-origin shortcut that lets the workspace's own pages call secured routes without the key is skipped for requests that send `X-Auth-Test`, so the test page checks the key honestly.
+
 ## 3.3.0 (2026-11-06)
 
 ### Added

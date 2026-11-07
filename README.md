@@ -132,6 +132,15 @@ Free instances sleep after 15 minutes idle; open the URL a minute before a recor
 |---|---|
 | `BRAND` | Default agency (`ohiotax`, `pinecrest`) |
 | `API_KEY` | Required on `/api/screenpop` and `/api/taxpayers/lookup` when set |
+
+### Testing the API key
+
+To check a key by hand, open `/api-test.html` (also linked in Settings). Enter the server and the key, pick how to send it (the Genesys data actions use `x-api-key`), and click Send test. It calls `GET /api/auth-check`, which says whether the key matched, how it arrived, and what looks wrong (no credentials, extra spaces or quote marks, a different key). **Try every way of sending the key** tests all four styles, and the page shows the same request as a curl command. From a terminal:
+
+```
+curl -i -H "x-api-key: $API_KEY" https://snow-mock-ui.onrender.com/api/auth-check
+```
+
 | `FRAME_ANCESTORS` | Who may iframe the app (default `*`) |
 | `PUBLIC_URL` | Base URL used in `popUrl` responses |
 | `DEMO_PHONES` | Remap seeded phones to real test numbers |

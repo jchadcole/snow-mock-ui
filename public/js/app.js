@@ -239,7 +239,7 @@
       <div class="f"><label>Brand (switching reloads the demo data with that agency's names)</label><select id="sBrand">${(S.config.brands || []).map((b) => `<option value="${b.id}" ${b.id === S.brand.id ? 'selected' : ''}>${esc(b.agency)}</option>`).join('')}</select></div>
       <p class="small"><a href="#" id="sSaved">Saved taxpayers (${localSaved().length})</a>: taxpayers you add are kept after restarts and redeploys. Export or import them here.</p>
       <p class="small muted">Version <b>${esc(S.config.version || '')}</b> (build ${esc(S.config.commit || '')}) · <a href="#" id="sNotes">Release notes</a></p>
-      <p class="small muted">Retail version of the demo (Haven &amp; Hill guided story): <a href="/retail/" target="_blank">/retail/</a> · <a href="/api-docs.html" target="_blank">API reference</a></p>`,
+      <p class="small muted">Retail version of the demo (Haven &amp; Hill guided story): <a href="/retail/" target="_blank">/retail/</a> · <a href="/api-docs.html" target="_blank">API reference</a> · <a href="/api-test.html" target="_blank">API credential test</a></p>`,
       `<button class="btn danger left" id="sReset">Reset demo data</button><button class="btn" id="sOut">Switch user</button><button class="btn primary" id="sSave">Save</button>`);
     $('#sSave').onclick = async () => {
       S.settings.agentEmail = fieldVal('sAgent'); S.settings.ringInbox = $('#sRing').checked; S.settings.autoPop = $('#sAuto').checked; S.settings.popView = fieldVal('sView'); S.settings.palette = $('#sPal').value; S.settings.assistStyle = $('#sAS').value; saveSettings(); applyTheme(S.brand);

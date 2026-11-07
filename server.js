@@ -92,7 +92,7 @@ function send(res, status, body, headers = {}) {
   res.writeHead(status, { 'Content-Type': isStr ? 'text/plain; charset=utf-8' : 'application/json; charset=utf-8', ...corsHeaders(), ...headers });
   res.end(isStr ? body : JSON.stringify(body, null, 2));
 }
-function corsHeaders() { return { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET,POST,PATCH,PUT,DELETE,OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-api-key', 'Cache-Control': 'no-store' }; }
+function corsHeaders() { return { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET,POST,PATCH,PUT,DELETE,OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-api-key, X-Auth-Test', 'Cache-Control': 'no-store' }; }
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let data = '';
@@ -109,7 +109,8 @@ function readBody(req) {
 function authorized(req, url) {
   if (!API_KEY) return true;
   // The workspace's own Genesys simulator page calls the API from the same origin; allow it without the key.
-  if (req.headers['sec-fetch-site'] === 'same-origin') return true;
+  // (The credential test page sends X-Auth-Test so it is checked like any other client.)
+  if (req.headers['sec-fetch-site'] === 'same-origin' && !req.headers['x-auth-test']) return true;
   const h = req.headers.authorization || '';
   if (h === `Bearer ${API_KEY}`) return true;
   if (h.startsWith('Basic ')) { const [, pass] = Buffer.from(h.slice(6), 'base64').toString().split(':'); if (pass === API_KEY) return true; }
@@ -124,6 +125,7 @@ const bad = (msg) => Object.assign(new Error(msg), { status: 400 });
 const nf = () => Object.assign(new Error('Not found'), { status: 404 });
 class Created { constructor(body) { this.body = body; } }
 const created = (body) => new Created(body);
+class Replied { constructor(status, body) { this.status = status; this.body = body; } }
 
 // ---------- domain ----------
 const getTp = (id) => db.taxpayers.find((t) => t.id === id);
@@ -222,6 +224,41 @@ const routes = [];
 const route = (method, pattern, handler, opts = {}) => routes.push({ method, re: new RegExp(`^${pattern.replace(/:(\w+)/g, '(?<$1>[^/]+)')}$`), handler, ...opts });
 const needTp = (id) => { const t = getTp(id); if (!t) throw nf(); return t; };
 
+// Manual credential test (public, so it can explain a failure). It checks the API key the way the secured routes do,
+// except that it does not accept the workspace's same-origin shortcut, so a browser test is honest. Never echoes the key.
+route('GET', '/api/auth-check', (req, url) => {
+  const h = String(req.headers.authorization || ''); const xk = req.headers['x-api-key']; const q = url.searchParams.get('apiKey');
+  const received = []; let method = null; const hints = [];
+  const clean = (v) => String(v).trim().replace(/^["'](.*)["']$/, '$1').trim();
+  const look = (where, v, extra = []) => {
+    const issues = [...extra];
+    if (v === '') issues.push('empty');
+    if (v !== String(v).trim()) issues.push('has a leading or trailing space or line break');
+    if (/^["'].*["']$/.test(String(v).trim())) issues.push('is wrapped in quote marks');
+    if (/^bearer\s/i.test(String(v).trim())) issues.push('already starts with "Bearer", so it was probably added twice');
+    received.push({ where, characters: String(v).length, issues });
+    if (API_KEY && !method && v === API_KEY) method = where;
+    else if (API_KEY && v !== API_KEY && clean(v) === API_KEY) hints.push(`${where}: the key is right except for spaces or quote marks around it. Remove them.`);
+  };
+  if (h) {
+    const m = /^(\S+)\s+([\s\S]*)$/.exec(h);
+    if (!m) look('Authorization header', h, ['has no scheme; use "Bearer <key>" or Basic']);
+    else if (/^bearer$/i.test(m[1])) look('Authorization: Bearer', m[2]);
+    else if (/^basic$/i.test(m[1])) {
+      let dec = ''; try { dec = Buffer.from(m[2], 'base64').toString(); } catch { /* ignore */ }
+      if (!dec.includes(':')) look('Authorization: Basic', '', ['decodes to text with no ":", it must be user:password']);
+      else look('Authorization: Basic (password)', dec.slice(dec.indexOf(':') + 1));
+    } else received.push({ where: `Authorization: ${m[1]}`, characters: m[2].length, issues: [`the scheme "${m[1]}" is not supported; use Bearer or Basic`] });
+  }
+  if (xk !== undefined) look('x-api-key header', xk);
+  if (q !== null) look('apiKey query parameter', q);
+  const keyRequired = !!API_KEY; const ok = !keyRequired || !!method;
+  if (!keyRequired) hints.push('API_KEY is not set on this server, so the secured routes accept any request. Set API_KEY in Render > Environment to require one.');
+  else if (!received.length) hints.push('No credentials arrived. Send the key as "Authorization: Bearer <key>", "x-api-key: <key>", Basic auth with the key as the password, or ?apiKey=<key>. If the data action should send one, check that its header or credential is actually attached.');
+  else if (!ok && !hints.length) hints.push('A credential arrived but it does not match API_KEY on this server. Compare it with Render > Environment > API_KEY, and check you are calling the right environment.');
+  const body = { ok, keyRequired, authenticated: keyRequired && ok, method, received, hints, version: VERSION, time: nowLocal(), securedRoutes: ['POST /api/screenpop', 'GET /api/taxpayers/lookup', 'POST /api/bot-sessions'] };
+  return ok ? body : new Replied(401, body);
+});
 route('GET', '/api/version', () => versionInfo());
 route('GET', '/api/changelog', () => ({ version: VERSION, markdown: fs.existsSync(path.join(__dirname, 'CHANGELOG.md')) ? fs.readFileSync(path.join(__dirname, 'CHANGELOG.md'), 'utf8') : '' }));
 route('GET', '/api/health', () => ({ status: 'ok', version: VERSION, commit: COMMIT, savedTaxpayers: store.storeInfo(), brand: brandId, seededOn: db.seededOn, time: nowLocal(), taxpayers: db.taxpayers.length, genesysLookup: !!GENESYS.clientId, frameAncestors: FRAME_ANCESTORS }));
@@ -546,6 +583,7 @@ const server = http.createServer(async (req, res) => {
       const m = url.pathname.replace(/\/$/, '').match(r.re); if (!m) continue;
       if (r.secure && !authorized(req, url)) return send(res, 401, { error: 'Unauthorized: supply Authorization: Bearer <API_KEY> or x-api-key' });
       const out = await r.handler(req, url, m.groups || {});
+      if (out instanceof Replied) return send(res, out.status, out.body);
       return send(res, out instanceof Created ? 201 : 200, out instanceof Created ? out.body : out);
     }
     if (url.pathname.startsWith('/api/')) return send(res, 404, { error: 'No such endpoint' });

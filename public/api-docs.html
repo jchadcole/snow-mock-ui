@@ -51,6 +51,9 @@
   <div class="ep"><h3><span class="m GET">GET</span>/api/screenpop/events?agent=&lt;email&gt;</h3>Server-Sent Events stream (<code>event: screenpop</code>).</div>
   <div class="ep"><h3><span class="m GET">GET</span>/api/screenpop/recent</h3>Last 50 pops.</div>
 
+  <h2>2b. Test the API key by hand</h2>
+  <div class="ep"><h3><span class="m GET">GET</span>/api/auth-check</h3>Public. Checks the key the way the secured routes do and explains the result: <code>{ok, keyRequired, authenticated, method, received:[{where, characters, issues}], hints}</code>. Returns <code>200</code> when the key matches (or no <code>API_KEY</code> is set) and <code>401</code> with the same explanation when it does not. It never echoes the key. Try it from <a href="/api-test.html">/api-test.html</a>, or:<pre>curl -i -H "x-api-key: $API_KEY" https://YOUR-HOST/api/auth-check</pre>The key may be sent as <code>x-api-key</code>, <code>Authorization: Bearer</code>, Basic auth (the key is the password) or <code>?apiKey=</code>.</div>
+
   <h2>3. Lookup for IVR, bots and data actions</h2>
   <div class="ep"><h3><span class="m GET">GET</span>/api/taxpayers/lookup?phone=|last4=|returnId=|accountNumber=|taxpayerId= <span class="lock">key</span></h3>
     Flat JSON for Genesys data action output contracts. Lets a virtual agent answer "where is my refund" before routing.
